@@ -5,23 +5,20 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
-SCRIPTS_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPTS_DIR.parent
-sys.path.insert(0, str(SCRIPTS_DIR))
+# Add project root to path to resolve absolute app.* imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-import config  # noqa: E402, F401 — loads PROJECT_ROOT/.env
-from config import PROJECT_ROOT
-
-from course_export import (  # noqa: E402
+from app import config
+from app.canvas import get_canvas
+from app.course_export import (
     iter_attachments,
     load_course_data,
     resolve_export_root,
 )
-from canvas_client import get_canvas  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -73,10 +70,7 @@ def main() -> int:
         format="%(levelname)s: %(message)s",
     )
 
-    export_dir = os.environ.get(
-        "COURSE_EXPORT_DIR",
-        "Spring-2026-COMPUTER-SCIENCE-PRINCIPLES-CS-10051-600--2026-May-27_17-59-33-518",
-    )
+    export_dir = config.COURSE_EXPORT_DIR or "Spring-2026-COMPUTER-SCIENCE-PRINCIPLES-CS-10051-600--2026-May-27_17-59-33-518"
     export_root = resolve_export_root(PROJECT_ROOT, export_dir)
     data = load_course_data(export_root)
     attachments = iter_attachments(data, export_root)
@@ -103,7 +97,7 @@ def main() -> int:
         return 0
 
     canvas = get_canvas()
-    account_id = int(os.environ.get("CANVAS_ACCOUNT_ID", "1"))
+    account_id = int(config.CANVAS_ACCOUNT_ID or "1")
 
     if args.course_id:
         course = canvas.get_course(args.course_id)
@@ -156,7 +150,7 @@ def main() -> int:
                 log.error("  Failed %s: %s", title, exc)
 
     print()
-    print(f"Course URL: {os.environ['CANVAS_API_URL']}/courses/{course.id}")
+    print(f"Course URL: {config.CANVAS_API_URL}/courses/{course.id}")
     print(f"Modules created: {modules_created}")
     print(f"Files uploaded: {uploaded}")
     if failed:

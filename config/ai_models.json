@@ -1,0 +1,17 @@
+[
+  {
+    "id": "gemini-2.5-flash",
+    "label": "Gemini 2.5 Flash (Google AI Studio)",
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "default": true,
+    "structured_output": "native"
+  },
+  {
+    "id": "nemotron-3-ultra-free",
+    "label": "NVIDIA Nemotron 3 Ultra 550B (OpenRouter, free)",
+    "provider": "openrouter",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "structured_output": "best_effort"
+  }
+]

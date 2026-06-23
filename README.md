@@ -1,6 +1,6 @@
 # EasyLearn
 
-EasyLearn is an LTI 1.3 compliant web application and suite of CLI tools designed to generate structured quizzes from Canvas course exports and slide decks (PDF/PPTX) using Gemini LLMs, and deploy them directly back to Canvas courses.
+EasyLearn is an LTI 1.3 compliant web application and suite of CLI tools designed to generate structured quizzes from Canvas course exports and slide decks (PDF/PPTX) using configurable AI models (Google Gemini and OpenRouter), and deploy them directly back to Canvas courses.
 
 The project features a FastAPI-based dashboard backend and integration with Canvas using the LTI 1.3 Advantage protocol.
 
@@ -29,9 +29,14 @@ CANVAS_API_URL=https://canvas.instructure.com
 CANVAS_API_TOKEN=your_canvas_api_token
 CANVAS_COURSE_ID=123456
 
-# Gemini LLM Config
+# Gemini LLM Config (Google AI Studio — default model in config/ai_models.json)
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash
+
+# OpenRouter (optional fallback models — see config/ai_models.json)
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_HTTP_REFERER=https://your-app-domain.com
+OPENROUTER_APP_NAME=EasyLearn
 
 # Path to local offline course export directory (relative to project root or absolute)
 COURSE_EXPORT_DIR=Spring-2026-COMPUTER-SCIENCE-PRINCIPLES-CS-10051-600--2026-May-27_17-59-33-518
@@ -112,30 +117,46 @@ To deploy this application as an external tool inside Canvas:
 ## Technical Details
 
 ### Architecture and Technology Stack
-EasyLearn is built on a modern Python stack centered around ASGI web serving, LTI handshake, and structured LLM integrations:
+EasyLearn is built on a structured Python package architecture centered around FastAPI, the LTI 1.3 Advantage protocol, and pluggable LLM providers:
 
-- **Web Server & Routing**: [main.py](./main.py) uses **FastAPI** to implement high-performance async endpoints. Route handling includes:
-  - `/login` (`lti_login`) redirects authentication initiation to Canvas OIDC.
-  - `/launch` (`lti_launch`) validates incoming signed POST claims.
-  - `/jwks` (`get_jwks`) serves the public JSON Web Key Set matching the RSA keys.
-  - `/` (`get_dashboard`) serves the dark-themed HTML/JS interactive dashboard.
-- **LTI FastAPI Adapter**: [pylti1p3_fastapi.py](./pylti1p3_fastapi.py) extends `pylti1p3` classes to support FastAPI context. Key adaptations:
-  - `FastAPIRequest` wrappers mapping FastAPI HTTP Request parameters.
-  - `FastAPICookieService` and `FastAPIRedirect` handling cookie propagation and redirect structures under ASGI.
-  - `InMemoryDataStorage` handling basic session states during OIDC transactions.
-- **Structured Content Generation**: Uses the `google-genai` SDK via [scripts/quiz_generate.py](./scripts/quiz_generate.py) to interact with `gemini-2.5-flash`. The LLM's response schema is explicitly constrained using Pydantic models defined in [scripts/quiz_schema.py](./scripts/quiz_schema.py):
-  - `WeeklyQuiz` holds a collection of `GeneratedQuestion` models containing multiple-choice or true-false questions and `GeneratedAnswer` objects.
-- **Document Text Extraction**: Course materials are parsed using specialized libraries in [scripts/material_extract.py](./scripts/material_extract.py):
-  - `pypdf` (`extract_pdf_text`) extracts text from PDFs.
-  - `python-pptx` (`extract_pptx_text`) compiles paragraphs and shapes slide-by-slide from PowerPoints.
+- **Web Server & Routing**: [main.py](./main.py) uses **FastAPI** to implement high-performance ASGI endpoints. Route handling includes:
+  - `/login` redirects authentication initiation to Canvas OIDC.
+  - `/launch` validates incoming signed POST claims.
+  - `/jwks` serves the public JSON Web Key Set.
+  - `/` serves the dark-themed HTML/JS interactive dashboard.
+- **Application Package (`app/`)**: Reusable logic is encapsulated cleanly in the `app` package:
+  - [app/lti.py](./app/lti.py) extends `pylti1p3` classes to support FastAPI context.
+  - [app/config.py](./app/config.py) centralizes settings loaded from `.env`.
+  - [app/canvas.py](./app/canvas.py) handles Canvas API client initialization.
+  - [app/schemas.py](./app/schemas.py) holds Pydantic schemas (`WeeklyQuiz`, etc.) for structured quiz output.
+  - [app/extraction.py](./app/extraction.py) handles document parsing using `pypdf` and `python-pptx`.
+  - [app/generation.py](./app/generation.py) routes quiz generation to Gemini or OpenRouter based on the model catalog.
+  - [app/llm/](./app/llm/) contains the model catalog loader, provider adapters, and unified error formatting.
+  - [app/deployment.py](./app/deployment.py) manages quiz creation and module linkage in Canvas.
+
+### AI model catalog
+
+Quiz generation models are curated in [config/ai_models.json](./config/ai_models.json). Each entry includes:
+
+- `id` — sent by the dashboard when generating (`model_id`)
+- `label` — shown in the model dropdown
+- `provider` — `gemini` (native Google AI Studio SDK) or `openrouter` (OpenAI-compatible API)
+- `model` — provider-specific model string
+- `default` — optional; marks the default selection
+- `structured_output` — `native` or `best_effort` (internal; controls provider fallback behavior)
+
+Professors pick a model from the dashboard dropdown. If Gemini returns a 503/high-demand error, switch to an OpenRouter fallback (e.g. NVIDIA Nemotron free tier) without redeploying — as long as `OPENROUTER_API_KEY` is configured.
+
+To add a model, edit `config/ai_models.json` and restart the server. Models whose provider API key is missing appear disabled in the UI.
 
 ---
 
 ### Command-Line Interface Utilities
-A suite of CLI tools exists under the `scripts/` directory to manage and verify offline course exports and API connectivity.
+A suite of CLI tools exists under the `utils/` directory to manage and verify offline course exports and API connectivity.
 
-- **[scripts/verify_canvas.py](./scripts/verify_canvas.py)**: Test your Canvas API endpoint and credentials set in `.env`.
-- **[scripts/create_course_from_export.py](./scripts/create_course_from_export.py)**: Recreates Canvas course modules and uploads slide and PDF attachments parsing the offline export `course-data.js` mapping.
-  - Usage: `uv run scripts/create_course_from_export.py [--dry-run] [--course-id <id>]`
-- **[scripts/generate_weekly_quiz.py](./scripts/generate_weekly_quiz.py)**: The complete quiz generation pipeline. Extracts text for a selected week, validates text length, generates a quiz with Gemini structured JSON outputs, validates question rules, and publishes it to the specified Canvas course module.
-  - Usage: `uv run scripts/generate_weekly_quiz.py --week <number_or_label> [--dry-run]`
+- **[utils/verify_canvas.py](./utils/verify_canvas.py)**: Test your Canvas API endpoint and credentials.
+  - Usage: `uv run utils/verify_canvas.py`
+- **[utils/create_course_from_export.py](./utils/create_course_from_export.py)**: Recreates Canvas course modules and uploads slide and PDF attachments parsing the offline export `course-data.js` mapping.
+  - Usage: `uv run utils/create_course_from_export.py [--dry-run] [--course-id <id>]`
+- **[utils/generate_weekly_quiz.py](./utils/generate_weekly_quiz.py)**: The complete quiz generation pipeline. Extracts text for a selected week, validates text length, generates a quiz with the selected model from the catalog, validates question rules, and publishes it to the specified Canvas course module.
+  - Usage: `uv run utils/generate_weekly_quiz.py --week <number_or_label> [--model-id nemotron-3-ultra-free] [--dry-run]`

@@ -5,10 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from course_export import attachment_path
+from .course_export import attachment_path
 
 MAX_TEXT_CHARS = 100_000
 MIN_TEXT_CHARS = 200
+
+SUPPORTED_MATERIAL_SUFFIXES = (".pdf", ".pptx")
+
+
+def is_supported_material(filename: str) -> bool:
+    """Return True if the file type can be used for quiz generation."""
+    lower = filename.lower()
+    return lower.endswith(SUPPORTED_MATERIAL_SUFFIXES)
 
 
 def extract_pdf_text(path: Path) -> str:

@@ -4,29 +4,25 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-import os
 import sys
 from pathlib import Path
 
-SCRIPTS_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPTS_DIR.parent
-sys.path.insert(0, str(SCRIPTS_DIR))
+# Add project root to path to resolve absolute app.* imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-import config  # noqa: E402, F401 — loads PROJECT_ROOT/.env
-from config import PROJECT_ROOT
-
-from canvas_client import get_canvas  # noqa: E402
-from course_export import (  # noqa: E402
+from app import config
+from app.canvas import get_canvas
+from app.course_export import (
     get_week_module,
     load_course_data,
     normalize_week_label,
     resolve_export_root,
 )
-from material_extract import extract_week_text, validate_week_text  # noqa: E402
-from quiz_deploy import deploy_quiz_to_canvas  # noqa: E402
-from quiz_generate import generate_weekly_quiz  # noqa: E402
+from app.extraction import extract_week_text, validate_week_text
+from app.deployment import deploy_quiz_to_canvas
+from app.generation import generate_weekly_quiz
 
 log = logging.getLogger(__name__)
 CACHE_DIR = PROJECT_ROOT / "cache"
@@ -45,7 +41,12 @@ def parse_args() -> argparse.Namespace:
         "--course-id",
         type=int,
         default=None,
-        help="Canvas course id (default: CANVAS_COURSE_ID from .env)",
+        help="Canvas course id (default: CANVAS_COURSE_ID from config)",
+    )
+    parser.add_argument(
+        "--model-id",
+        default=None,
+        help="AI model id from config/ai_models.json (default: catalog default)",
     )
     parser.add_argument(
         "--dry-run",
@@ -112,10 +113,7 @@ def main() -> int:
         format="%(levelname)s: %(message)s",
     )
 
-    export_dir = os.environ.get(
-        "COURSE_EXPORT_DIR",
-        "Spring-2026-COMPUTER-SCIENCE-PRINCIPLES-CS-10051-600--2026-May-27_17-59-33-518",
-    )
+    export_dir = config.COURSE_EXPORT_DIR or "Spring-2026-COMPUTER-SCIENCE-PRINCIPLES-CS-10051-600--2026-May-27_17-59-33-518"
     export_root = resolve_export_root(PROJECT_ROOT, export_dir)
     data = load_course_data(export_root)
     module = get_week_module(data, args.week)
@@ -131,7 +129,8 @@ def main() -> int:
         return 0
 
     log.info("Generating quiz for %s (%s chars of material)", week_name, len(text))
-    quiz = generate_weekly_quiz(week_name, text)
+    quiz, model_entry = generate_weekly_quiz(week_name, text, model_id=args.model_id)
+    log.info("Generated via %s (%s)", model_entry.label, model_entry.provider)
     quiz_json = quiz.model_dump_json(indent=2)
 
     if args.dry_run or args.no_upload:
@@ -142,12 +141,12 @@ def main() -> int:
             print("\n(--no-upload: skipped Canvas)")
         return 0
 
-    course_id = args.course_id or int(os.environ.get("CANVAS_COURSE_ID", "2"))
+    course_id = args.course_id or int(config.CANVAS_COURSE_ID or "2")
     canvas = get_canvas()
     course = canvas.get_course(course_id)
 
     deployed = deploy_quiz_to_canvas(course, week_name, quiz)
-    base = os.environ.get("CANVAS_API_URL", "http://localhost:3000").rstrip("/")
+    base = config.CANVAS_API_URL or "http://localhost:3000"
     print()
     print(f"Quiz created (draft): {base}/courses/{course_id}/quizzes/{deployed.id}")
     print(f"Module: {week_name}")

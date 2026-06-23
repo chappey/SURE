@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EasyLearn - Quiz Generator Dashboard</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/static/logo.png">
     <!-- Modern Typography: Outfit & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -193,6 +195,120 @@
             gap: 0.5rem;
         }
 
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .course-switcher select {
+            min-width: 220px;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.85rem;
+            color: #e9d5ff;
+            background: rgba(15, 19, 26, 0.85);
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .course-switcher select option {
+            color: var(--text-main);
+            background: var(--bg-secondary);
+        }
+
+        .view-panel { display: none; }
+        .view-panel.active { display: block; }
+
+        .quiz-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .quiz-table th, .quiz-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--bg-card-border);
+        }
+
+        .quiz-table th {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-badge {
+            padding: 0.2rem 0.55rem;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-draft { background: rgba(148,163,184,0.15); color: #94a3b8; }
+        .status-deployed { background: rgba(56,189,248,0.15); color: #38bdf8; }
+        .status-published { background: rgba(16,185,129,0.15); color: #34d399; }
+
+        .quiz-detail-panel {
+            margin-top: 1.5rem;
+            padding: 1.25rem;
+            background: rgba(15,19,26,0.5);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 12px;
+            display: none;
+        }
+
+        .feedback-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .feedback-bar-track {
+            flex: 1;
+            height: 8px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .feedback-bar-fill {
+            height: 100%;
+            background: var(--accent-purple);
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .checkbox-row input { width: auto; accent-color: var(--accent-blue); }
+        .checkbox-row label {
+            margin: 0;
+            text-transform: none;
+            font-weight: 500;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .btn-sm {
+            padding: 0.4rem 0.75rem;
+            font-size: 0.75rem;
+            width: auto;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
         /* Layout Grid */
         .dashboard-grid {
             display: grid;
@@ -256,7 +372,7 @@
             position: relative;
         }
 
-        select, input[type="text"], textarea {
+        select, input[type="text"], input[type="number"], textarea {
             width: 100%;
             background-color: rgba(15, 19, 26, 0.6);
             border: 1px solid var(--bg-card-border);
@@ -269,7 +385,7 @@
             font-family: inherit;
         }
 
-        select:focus, input[type="text"]:focus, textarea:focus {
+        select:focus, input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
             border-color: var(--accent-blue);
             box-shadow: 0 0 0 2px var(--accent-blue-glow);
             background-color: rgba(15, 19, 26, 0.9);
@@ -595,9 +711,28 @@
             animation: slide-down 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        @keyframes slide-down {
-            from { transform: translateY(-20px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+        .type-badge {
+            padding: 0.25rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+        .badge-mc {
+            background-color: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+        .badge-tf {
+            background-color: rgba(139, 92, 246, 0.15);
+            color: #c084fc;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+        .badge-matching {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
         }
     </style>
 </head>
@@ -606,21 +741,15 @@
     <!-- Sidebar navigation -->
     <div class="sidebar">
         <a href="#" class="logo">
-            <i class="fa-solid fa-graduation-cap"></i>
+            <img src="/static/logo.png" alt="EasyLearn Logo" style="width: 32px; height: 32px; border-radius: 6px; object-fit: cover;">
             <span>EasyLearn</span>
         </a>
         <ul class="nav-links">
-            <li class="nav-item active">
-                <a href="#"><i class="fa-solid fa-sliders"></i> Generator</a>
+            <li class="nav-item active" data-view="generator">
+                <a href="#" onclick="switchView('generator'); return false;"><i class="fa-solid fa-sliders"></i> Generator</a>
             </li>
-            <li class="nav-item">
-                <a href="#"><i class="fa-solid fa-book-bookmark"></i> Courses</a>
-            </li>
-            <li class="nav-item">
-                <a href="#"><i class="fa-solid fa-list-check"></i> Quizzes</a>
-            </li>
-            <li class="nav-item">
-                <a href="#"><i class="fa-solid fa-gear"></i> Settings</a>
+            <li class="nav-item" data-view="quizzes">
+                <a href="#" onclick="switchView('quizzes'); return false;"><i class="fa-solid fa-list-check"></i> Quizzes</a>
             </li>
         </ul>
         <div class="user-profile">
@@ -639,12 +768,18 @@
                 <h2>Quiz Generation Dashboard</h2>
                 <p>Build AI-generated Canvas quizzes directly from your course modules and slides.</p>
             </div>
-            <div class="course-badge">
-                <i class="fa-solid fa-circle-nodes"></i>
-                <span>CS-10051-600: Computer Science Principles</span>
+            <div class="header-actions">
+                <div class="course-badge course-switcher">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                    <select id="course-switcher" onchange="switchCourse(this.value)">
+                        <option value="">Loading courses...</option>
+                    </select>
+                </div>
             </div>
         </header>
 
+        <!-- Generator View -->
+        <div id="view-generator" class="view-panel active">
         <div class="dashboard-grid">
             
             <!-- Left Side: Selection & Configuration -->
@@ -660,10 +795,7 @@
                         <label for="module-select">Target Course Module</label>
                         <div class="select-wrapper">
                             <select id="module-select" onchange="onModuleChange()">
-                                <option value="week-1">Week 1: Introduction to Binary Representation</option>
-                                <option value="week-2">Week 2: Algorithms, Complexity & Logic</option>
-                                <option value="week-3">Week 3: Hardware, Gate Circuits & CPU</option>
-                                <option value="week-4">Week 4: Networks & Internet Architecture</option>
+                                <option value="">Loading course modules...</option>
                             </select>
                         </div>
                     </div>
@@ -689,44 +821,48 @@
                         <input type="text" id="quiz-title" value="Week 1 Quiz" placeholder="Enter quiz title">
                     </div>
 
-                    <!-- Settings Grid -->
-                    <div class="settings-grid">
-                        <div class="form-group">
-                            <label for="question-count">Questions</label>
-                            <select id="question-count">
-                                <option value="5" selected>5 Questions</option>
-                                <option value="10">10 Questions</option>
-                                <option value="15">15 Questions</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="question-type">Primary Type</label>
-                            <select id="question-type">
-                                <option value="multiple_choice_question">Multiple Choice</option>
-                                <option value="true_false_question">True / False</option>
-                                <option value="mixed">Mixed Types</option>
+                    <!-- AI Model -->
+                    <div class="form-group">
+                        <label for="model-select">AI Model</label>
+                        <div class="select-wrapper">
+                            <select id="model-select" onchange="onModelChange()">
+                                <option value="">Loading models...</option>
                             </select>
                         </div>
                     </div>
 
+                    <!-- Settings Grid -->
                     <div class="settings-grid">
-                        <!-- Temperature -->
                         <div class="form-group">
-                            <label for="temp-slider">Gemini Creativity</label>
-                            <div class="range-container">
-                                <input type="range" id="temp-slider" min="0" max="1" step="0.1" value="0.2" oninput="updateRangeVal(this, 'temp-val')">
-                                <span class="range-val" id="temp-val">0.2</span>
-                            </div>
+                            <label for="count-mc">Multiple Choice Qs</label>
+                            <input type="number" id="count-mc" min="0" max="25" value="4">
                         </div>
-                        <!-- Point weighting -->
+                        <div class="form-group">
+                            <label for="count-tf">True / False Qs</label>
+                            <input type="number" id="count-tf" min="0" max="25" value="2">
+                        </div>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label for="count-matching">Matching Qs</label>
+                            <input type="number" id="count-matching" min="0" max="25" value="4">
+                        </div>
                         <div class="form-group">
                             <label for="points-per-q">Points per Q</label>
-                            <select id="points-per-q">
-                                <option value="1" selected>1 Point</option>
-                                <option value="2">2 Points</option>
-                                <option value="5">5 Points</option>
-                            </select>
+                            <div class="select-wrapper">
+                                <select id="points-per-q">
+                                    <option value="1" selected>1 Point</option>
+                                    <option value="2">2 Points</option>
+                                    <option value="5">5 Points</option>
+                                </select>
+                            </div>
                         </div>
+                    </div>
+
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="include-feedback" checked>
+                        <label for="include-feedback">Include student feedback questions at end of quiz</label>
                     </div>
 
                     <!-- Generate Button -->
@@ -752,7 +888,7 @@
                     <!-- Loader panel -->
                     <div class="generator-progress" id="gen-loader">
                         <div class="loader-orb"></div>
-                        <h4 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Generating Quiz via Gemini...</h4>
+                        <h4 id="gen-loader-title" style="font-size: 1.25rem; margin-bottom: 0.5rem;">Generating Quiz...</h4>
                         <p style="color: var(--text-muted); font-size: 0.9rem;">Extracting text structure and preparing structured JSON.</p>
                         
                         <div class="steps-container">
@@ -802,275 +938,547 @@
             </div>
 
         </div>
+        </div>
+
+        <!-- Quizzes Library View -->
+        <div id="view-quizzes" class="view-panel">
+            <div class="glass-card">
+                <h3 class="card-title"><i class="fa-solid fa-list-check"></i> Course Quiz Library</h3>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+                    All quizzes generated in this course workspace. Deployed and published status syncs from Canvas.
+                </p>
+                <div style="overflow-x: auto;">
+                    <table class="quiz-table">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Module</th>
+                                <th>Questions</th>
+                                <th>Status</th>
+                                <th>Stats</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="quizzes-table-body">
+                            <tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="quiz-detail-panel" id="quiz-detail-panel">
+                    <h4 id="quiz-detail-title" style="margin-bottom: 1rem;">Quiz Details</h4>
+                    <div id="quiz-detail-stats"></div>
+                    <div id="quiz-detail-feedback" style="margin-top: 1rem;"></div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Scripts for logic -->
     <script>
-        const moduleMaterials = {
-            "week-1": [
-                { id: "m1", name: "lecture_1_binary_basics.pdf", size: "1.2 MB" },
-                { id: "m2", name: "week1_number_systems_slides.pptx", size: "4.5 MB" },
-                { id: "m3", name: "practice_problems_binary.pdf", size: "450 KB" }
-            ],
-            "week-2": [
-                { id: "m4", name: "lecture_2_flowcharts.pdf", size: "900 KB" },
-                { id: "m5", name: "algorithm_complexity_notes.pdf", size: "1.1 MB" },
-                { id: "m6", name: "logic_gates_problems.pdf", size: "320 KB" }
-            ],
-            "week-3": [
-                { id: "m7", name: "cpu_architecture_slides.pptx", size: "8.2 MB" },
-                { id: "m8", name: "transistors_and_logic.pdf", size: "1.8 MB" }
-            ],
-            "week-4": [
-                { id: "m9", name: "lecture_4_tcp_ip_protocols.pdf", size: "2.4 MB" },
-                { id: "m10", name: "dns_routing_diagrams.pptx", size: "5.1 MB" },
-                { id: "m11", name: "internet_history_reading.pdf", size: "980 KB" }
-            ]
-        };
+        let loadedModules = [];
+        let loadedCourses = [];
+        let loadedModels = [];
+        let currentActiveQuiz = null;
+        let currentCourseId = null;
+        let currentStep = 1;
+        let stepInterval = null;
 
-        const generatedQuizDatabase = {
-            "week-1": {
-                title: "Week 1 Quiz: Binary Representation",
-                questions: [
-                    {
-                        name: "Q1: Binary Place Value",
-                        text: "What is the decimal equivalent of the binary number 1011?",
-                        type: "multiple_choice_question",
-                        points: 1,
-                        answers: [
-                            { text: "9", weight: 0 },
-                            { text: "11", weight: 100, comment: "Correct! 8 + 0 + 2 + 1 = 11" },
-                            { text: "13", weight: 0 },
-                            { text: "15", weight: 0 }
-                        ]
-                    },
-                    {
-                        name: "Q2: Overflow Error",
-                        text: "Which of the following describes an overflow error?",
-                        type: "multiple_choice_question",
-                        points: 1,
-                        answers: [
-                            { text: "When a value is too large to be represented using the allocated number of bits", weight: 100, comment: "Correct!" },
-                            { text: "When a program attempts to divide a number by zero", weight: 0 },
-                            { text: "When a file is corrupted during network download", weight: 0 },
-                            { text: "When two different strings map to the same hash value", weight: 0 }
-                        ]
-                    },
-                    {
-                        name: "Q3: ASCII Character Encoding",
-                        text: "ASCII uses 7 bits to encode characters. How many unique characters can it represent?",
-                        type: "multiple_choice_question",
-                        points: 1,
-                        answers: [
-                            { text: "64", weight: 0 },
-                            { text: "128", weight: 100, comment: "Correct! 2^7 = 128" },
-                            { text: "256", weight: 0 },
-                            { text: "512", weight: 0 }
-                        ]
-                    },
-                    {
-                        name: "Q4: Lossless Compression",
-                        text: "True or False: Lossy compression allows the original file to be reconstructed exactly bit-for-bit.",
-                        type: "true_false_question",
-                        points: 1,
-                        answers: [
-                            { text: "True", weight: 0 },
-                            { text: "False", weight: 100, comment: "Correct! That describes lossless compression. Lossy discards information." }
-                        ]
-                    },
-                    {
-                        name: "Q5: Hexadecimal Value",
-                        text: "What is the hexadecimal representation of the decimal number 15?",
-                        type: "multiple_choice_question",
-                        points: 1,
-                        answers: [
-                            { text: "A", weight: 0 },
-                            { text: "D", weight: 0 },
-                            { text: "F", weight: 100, comment: "Correct! Hexadecimal 'F' equals 15 in decimal" },
-                            { text: "X", weight: 0 }
-                        ]
-                    }
-                ]
-            },
-            "week-2": {
-                title: "Week 2 Quiz: Algorithms & Complexity",
-                questions: [
-                    {
-                        name: "Q1: Big O Notation",
-                        text: "Which Big O run-time complexity represents a binary search algorithm?",
-                        type: "multiple_choice_question",
-                        points: 1,
-                        answers: [
-                            { text: "O(1)", weight: 0 },
-                            { text: "O(N)", weight: 0 },
-                            { text: "O(log N)", weight: 100, comment: "Correct! Binary search cuts the search space in half each step." },
-                            { text: "O(N^2)", weight: 0 }
-                        ]
-                    },
-                    {
-                        name: "Q2: Linear Search Condition",
-                        text: "True or False: A linear search algorithm requires the dataset to be sorted beforehand.",
-                        type: "true_false_question",
-                        points: 1,
-                        answers: [
-                            { text: "True", weight: 0 },
-                            { text: "False", weight: 100, comment: "Correct! Only binary search requires a sorted list." }
-                        ]
-                    },
-                    {
-                        name: "Q3: Logic Operator AND",
-                        text: "Which of the following logic gates outputs True ONLY when all inputs are True?",
-                        type: "multiple_choice_question",
-                        points: 1,
-                        answers: [
-                            { text: "AND", weight: 100, comment: "Correct!" },
-                            { text: "OR", weight: 0 },
-                            { text: "XOR", weight: 0 },
-                            { text: "NAND", weight: 0 }
-                        ]
-                    },
-                    {
-                        name: "Q4: Heuristic Definition",
-                        text: "When is a heuristic algorithm most appropriate to use?",
-                        type: "multiple_choice_question",
-                        points: 1,
-                        answers: [
-                            { text: "When an exact, optimal solution is impossible or mathematically too slow to find", weight: 100, comment: "Correct! Heuristics trade optimality for speed." },
-                            { text: "When we need to verify mathematical proofs with 100% accuracy", weight: 0 },
-                            { text: "When compressing images without losing any pixels", weight: 0 },
-                            { text: "When encrypting highly secure financial databases", weight: 0 }
-                        ]
-                    },
-                    {
-                        name: "Q5: Algorithm Properties",
-                        text: "Which of the following is NOT a fundamental property of a valid algorithm?",
-                        type: "multiple_choice_question",
-                        points: 1,
-                        answers: [
-                            { text: "Finiteness (must terminate)", weight: 0 },
-                            { text: "Definiteness (clear, unambiguous steps)", weight: 0 },
-                            { text: "Written in Python programming language", weight: 100, comment: "Correct! Algorithms can be expressed in pseudocode, flowcharts, or any language." },
-                            { text: "Effectiveness (must be executable)", weight: 0 }
-                        ]
-                    }
-                ]
+        function parseApiDetail(data) {
+            if (!data || data.detail === undefined || data.detail === null) return null;
+            if (typeof data.detail === "string") return data.detail;
+            if (Array.isArray(data.detail)) {
+                return data.detail.map(item => item.msg || String(item)).join(" ");
             }
-        };
+            return String(data.detail);
+        }
 
-        // Initialize materials lists on load
         window.addEventListener("DOMContentLoaded", () => {
-            onModuleChange();
+            loadWorkspace();
         });
 
-        function updateRangeVal(slider, labelId) {
-            document.getElementById(labelId).innerText = slider.value;
+        async function loadWorkspace() {
+            await fetchCourseInfo();
+            await fetchCourses();
+            await fetchModels();
+            await fetchModules();
+        }
+
+        function modelStorageKey() {
+            return currentCourseId ? `easylearn_model_${currentCourseId}` : "easylearn_model_default";
+        }
+
+        async function fetchModels() {
+            try {
+                const res = await fetch("/api/models");
+                if (!res.ok) throw new Error("Failed to load models");
+                loadedModels = await res.json();
+                populateModelSelect();
+            } catch (err) {
+                console.error("Error loading models:", err);
+                const select = document.getElementById("model-select");
+                select.innerHTML = `<option value="">Models unavailable</option>`;
+            }
+        }
+
+        function populateModelSelect() {
+            const select = document.getElementById("model-select");
+            select.innerHTML = "";
+
+            if (!loadedModels.length) {
+                select.innerHTML = `<option value="">No models configured</option>`;
+                return;
+            }
+
+            const storedId = sessionStorage.getItem(modelStorageKey());
+            let selectedId = null;
+
+            loadedModels.forEach(model => {
+                const opt = document.createElement("option");
+                opt.value = model.id;
+                opt.textContent = model.label;
+                if (!model.available) {
+                    opt.disabled = true;
+                    opt.title = "Not configured on server (missing API key)";
+                }
+                select.appendChild(opt);
+            });
+
+            const preferred = loadedModels.find(m => m.id === storedId && m.available)
+                || loadedModels.find(m => m.default && m.available)
+                || loadedModels.find(m => m.available)
+                || loadedModels[0];
+            if (preferred) {
+                selectedId = preferred.id;
+                select.value = selectedId;
+            }
+            onModelChange();
+        }
+
+        function onModelChange() {
+            const select = document.getElementById("model-select");
+            const model = loadedModels.find(m => m.id === select.value);
+            if (select.value && model?.available) {
+                sessionStorage.setItem(modelStorageKey(), select.value);
+            }
+        }
+
+        function selectedModelLabel() {
+            const select = document.getElementById("model-select");
+            const model = loadedModels.find(m => m.id === select.value);
+            return model ? model.label : "AI model";
+        }
+
+        function populateCourseSelect(courses, selectedId) {
+            const select = document.getElementById("course-switcher");
+            select.innerHTML = "";
+            if (!courses.length) {
+                select.innerHTML = `<option value="">No courses available</option>`;
+                return;
+            }
+            courses.forEach(c => {
+                const opt = document.createElement("option");
+                opt.value = c.id;
+                opt.textContent = `${c.course_code || c.id}: ${c.name}`;
+                select.appendChild(opt);
+            });
+            if (selectedId) {
+                select.value = String(selectedId);
+            }
+        }
+
+        function switchView(view) {
+            document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
+            document.getElementById(`view-${view}`).classList.add("active");
+            document.querySelectorAll(".nav-item").forEach(n => {
+                n.classList.toggle("active", n.dataset.view === view);
+            });
+            if (view === "quizzes") fetchQuizzesOverview();
+        }
+
+        async function fetchCourses() {
+            try {
+                const res = await fetch("/api/courses");
+                if (!res.ok) throw new Error("Failed to list courses");
+                loadedCourses = await res.json();
+                populateCourseSelect(loadedCourses, currentCourseId);
+            } catch (err) {
+                console.error("Error fetching courses:", err);
+                const select = document.getElementById("course-switcher");
+                if (currentCourseId) {
+                    populateCourseSelect([], currentCourseId);
+                } else {
+                    select.innerHTML = `<option value="">Could not load courses</option>`;
+                }
+            }
+        }
+
+        async function switchCourse(courseId) {
+            if (!courseId || String(courseId) === String(currentCourseId)) return;
+            const select = document.getElementById("course-switcher");
+            const previous = currentCourseId;
+            try {
+                const res = await fetch("/api/courses/switch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ course_id: parseInt(courseId) })
+                });
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Could not switch course");
+                }
+                resetPreview();
+                await loadWorkspace();
+            } catch (err) {
+                alert(`Course switch failed: ${err.message}`);
+                if (select && previous) select.value = String(previous);
+            }
+        }
+
+        async function fetchCourseInfo() {
+            try {
+                const res = await fetch("/api/course-info");
+                if (res.status === 401) { window.location.reload(); return; }
+                if (!res.ok) throw new Error("Failed to load course details");
+                const data = await res.json();
+                currentCourseId = data.id;
+                populateCourseSelect(loadedCourses.length ? loadedCourses : [{
+                    id: data.id,
+                    name: data.name,
+                    course_code: data.course_code
+                }], data.id);
+
+                const profileName = document.querySelector(".user-name");
+                if (profileName && data.user_name) profileName.innerText = data.user_name;
+
+                const avatar = document.querySelector(".avatar");
+                if (avatar && data.user_name) {
+                    avatar.innerText = data.user_name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+                }
+            } catch (err) {
+                console.error("Error fetching course info:", err);
+            }
+        }
+
+        async function fetchModules() {
+            const moduleSelect = document.getElementById("module-select");
+            moduleSelect.innerHTML = `<option value="">Loading course modules...</option>`;
+            try {
+                const res = await fetch("/api/modules");
+                if (res.status === 401) { window.location.reload(); return; }
+                if (!res.ok) throw new Error("Failed to fetch course modules");
+                loadedModules = await res.json();
+                moduleSelect.innerHTML = "";
+                if (loadedModules.length === 0) {
+                    moduleSelect.innerHTML = `<option value="">No modules with PDF/PPTX materials</option>`;
+                    document.getElementById("material-list-container").innerHTML =
+                        `<p style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem;">No modules contain supported materials (PDF or PPTX).</p>`;
+                    return;
+                }
+                loadedModules.forEach(mod => {
+                    const opt = document.createElement("option");
+                    opt.value = mod.id;
+                    opt.innerText = mod.name;
+                    moduleSelect.appendChild(opt);
+                });
+                onModuleChange();
+            } catch (err) {
+                console.error("Error fetching modules:", err);
+                moduleSelect.innerHTML = `<option value="">Error loading course modules</option>`;
+            }
+        }
+
+        async function fetchQuizzesOverview() {
+            const tbody = document.getElementById("quizzes-table-body");
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Loading...</td></tr>`;
+            try {
+                const res = await fetch("/api/quizzes/overview");
+                if (!res.ok) throw new Error("Failed to load quizzes");
+                const quizzes = await res.json();
+                if (quizzes.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">No quizzes in this course workspace yet.</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = "";
+                quizzes.forEach(q => {
+                    const tr = document.createElement("tr");
+                    const status = q.status || (q.deployed ? "deployed" : "draft");
+                    const statsText = q.submission_count != null
+                        ? `${q.submission_count} submissions${q.score_average != null ? ` · avg ${Number(q.score_average).toFixed(1)}` : ""}`
+                        : "—";
+                    const canvasUrl = q.quiz_url || null;
+                    const hasCanvas = Boolean(q.canvas_quiz_id || canvasUrl);
+                    tr.innerHTML = `
+                        <td>${q.title}</td>
+                        <td>${q.module_name || "—"}</td>
+                        <td>${q.questions_count || q.question_count || "—"}</td>
+                        <td><span class="status-badge status-${status}">${status}</span></td>
+                        <td>${statsText}</td>
+                        <td style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+                            ${hasCanvas && canvasUrl ? `<a href="${canvasUrl}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;">Canvas</a>` : ""}
+                            ${status === "draft" ? `<button class="btn btn-secondary btn-sm" onclick="loadDraft('${q.id}')">Edit</button>` : ""}
+                            ${status === "deployed" ? `<button class="btn btn-primary btn-sm" onclick="publishQuiz('${q.id}')">Publish</button>` : ""}
+                            ${hasCanvas ? `<button class="btn btn-secondary btn-sm" onclick="showQuizDetails('${q.id}', '${q.title.replace(/'/g, "\\'")}')">Details</button>` : ""}
+                        </td>`;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger);">Error loading quizzes</td></tr>`;
+            }
+        }
+
+        async function loadDraft(quizId) {
+            try {
+                const res = await fetch(`/api/quizzes/${quizId}`);
+                if (!res.ok) throw new Error("Could not load draft");
+                currentActiveQuiz = await res.json();
+                switchView("generator");
+                renderQuizUI();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        async function publishQuiz(quizId) {
+            try {
+                const res = await fetch(`/api/quizzes/${quizId}/publish`, { method: "POST" });
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Publish failed");
+                }
+                await fetchQuizzesOverview();
+            } catch (err) {
+                alert(`Publish failed: ${err.message}`);
+            }
+        }
+
+        async function showQuizDetails(quizId, title) {
+            const panel = document.getElementById("quiz-detail-panel");
+            const statsEl = document.getElementById("quiz-detail-stats");
+            const feedbackEl = document.getElementById("quiz-detail-feedback");
+            document.getElementById("quiz-detail-title").textContent = title;
+            panel.style.display = "block";
+            statsEl.innerHTML = `<p style="color:var(--text-muted);">Loading stats...</p>`;
+            feedbackEl.innerHTML = "";
+
+            try {
+                const [statsRes, feedbackRes] = await Promise.all([
+                    fetch(`/api/quizzes/${quizId}/stats`),
+                    fetch(`/api/quizzes/${quizId}/feedback`)
+                ]);
+                const stats = statsRes.ok ? await statsRes.json() : null;
+                const feedback = feedbackRes.ok ? await feedbackRes.json() : null;
+
+                if (stats && stats.available) {
+                    statsEl.innerHTML = `
+                        <p><strong>Submissions:</strong> ${stats.submission_count ?? 0}</p>
+                        <p><strong>Avg score:</strong> ${stats.score_average != null ? Number(stats.score_average).toFixed(1) : "—"}</p>
+                        <p><strong>High / Low:</strong> ${stats.score_high ?? "—"} / ${stats.score_low ?? "—"}</p>`;
+                } else {
+                    statsEl.innerHTML = `<p style="color:var(--text-muted);">No submission statistics yet.</p>`;
+                }
+
+                if (feedback && feedback.has_feedback && feedback.questions.length) {
+                    feedbackEl.innerHTML = `<h5 style="margin-bottom:0.75rem;">Student Feedback</h5>`;
+                    feedback.questions.forEach(fq => {
+                        const max = Math.max(...Object.values(fq.distribution || {}), 1);
+                        let bars = "";
+                        (fq.likert_labels || []).forEach(label => {
+                            const count = (fq.distribution || {})[label] || 0;
+                            const pct = (count / max) * 100;
+                            bars += `<div class="feedback-bar-row"><span style="width:120px;">${label}</span><div class="feedback-bar-track"><div class="feedback-bar-fill" style="width:${pct}%"></div></div><span>${count}</span></div>`;
+                        });
+                        feedbackEl.innerHTML += `<div style="margin-bottom:1rem;"><strong>${fq.question_name}</strong>${bars}</div>`;
+                    });
+                } else if (feedback && !feedback.has_feedback) {
+                    feedbackEl.innerHTML = `<p style="color:var(--text-muted);">No feedback questions on this quiz.</p>`;
+                }
+            } catch (err) {
+                statsEl.innerHTML = `<p style="color:var(--danger);">Could not load details.</p>`;
+            }
         }
 
         function onModuleChange() {
             const moduleSelect = document.getElementById("module-select");
-            const selectedVal = moduleSelect.value;
-            const materials = moduleMaterials[selectedVal] || [];
-            
+            const selectedId = moduleSelect.value;
+            if (!selectedId) return;
+
+            const selectedMod = loadedModules.find(m => String(m.id) === String(selectedId));
             const container = document.getElementById("material-list-container");
             container.innerHTML = "";
             
-            materials.forEach(mat => {
-                const item = document.createElement("div");
-                item.className = "material-item";
-                item.innerHTML = `
-                    <input type="checkbox" id="${mat.id}" checked>
-                    <label class="material-name" for="${mat.id}" style="margin: 0; text-transform: none; font-weight: normal; cursor: pointer;">
-                        ${mat.name}
+            if (!selectedMod || !selectedMod.items || selectedMod.items.length === 0) {
+                container.innerHTML = `<p style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem;">No file attachments in this module.</p>`;
+                return;
+            }
+            
+            selectedMod.items.forEach(item => {
+                const div = document.createElement("div");
+                div.className = "material-item";
+                div.innerHTML = `
+                    <input type="checkbox" id="mat-${item.id}" value="${item.id}" checked>
+                    <label class="material-name" for="mat-${item.id}" style="margin: 0; text-transform: none; font-weight: normal; cursor: pointer; flex: 1;">
+                        ${item.title}
                     </label>
-                    <span class="material-meta">${mat.size}</span>
+                    <span class="material-meta">${item.size}</span>
                 `;
-                container.appendChild(item);
+                container.appendChild(div);
             });
 
             // Auto-update default quiz title
             const selectedText = moduleSelect.options[moduleSelect.selectedIndex].text;
-            const weekPrefix = selectedText.split(":")[0];
-            document.getElementById("quiz-title").value = `${weekPrefix} Quiz`;
+            const prefix = selectedText.split(":")[0];
+            document.getElementById("quiz-title").value = `${prefix} Quiz`;
         }
 
-        // Simulate generator steps
-        function triggerQuizGeneration() {
+        function animateSteps() {
+            currentStep = 1;
+            const modelLabel = selectedModelLabel();
+            document.getElementById("gen-loader-title").innerText = `Generating Quiz via ${modelLabel}...`;
+            const updateStepUI = () => {
+                for (let i = 1; i <= 4; i++) {
+                    const el = document.getElementById(`step-${i}`);
+                    if (i < currentStep) {
+                        el.className = "step-item completed";
+                        if (i === 1) el.innerHTML = `<i class="fa-solid fa-circle-check"></i> Extracted course materials.`;
+                        if (i === 2) el.innerHTML = `<i class="fa-solid fa-circle-check"></i> Checked context and parameters.`;
+                        if (i === 3) el.innerHTML = `<i class="fa-solid fa-circle-check"></i> JSON generated & validated.`;
+                        if (i === 4) el.innerHTML = `<i class="fa-solid fa-circle-check"></i> Ready.`;
+                    } else if (i === currentStep) {
+                        el.className = "step-item active";
+                        if (i === 1) el.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Downloading and extracting materials...`;
+                        if (i === 2) el.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Analyzing conceptual topics...`;
+                        if (i === 3) el.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating structured JSON via ${modelLabel}...`;
+                        if (i === 4) el.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Formatting preview controls...`;
+                    } else {
+                        el.className = "step-item";
+                        if (i === 1) el.innerHTML = `<i class="fa-regular fa-circle"></i> Extracting slide & note text...`;
+                        if (i === 2) el.innerHTML = `<i class="fa-regular fa-circle"></i> Analyzing conceptual material...`;
+                        if (i === 3) el.innerHTML = `<i class="fa-regular fa-circle"></i> Generating structured JSON...`;
+                        if (i === 4) el.innerHTML = `<i class="fa-regular fa-circle"></i> Rendering question controls...`;
+                    }
+                }
+            };
+
+            updateStepUI();
+            stepInterval = setInterval(() => {
+                if (currentStep < 3) {
+                    currentStep++;
+                    updateStepUI();
+                }
+            }, 1800);
+        }
+
+        function completeAllSteps() {
+            clearInterval(stepInterval);
+            for (let i = 1; i <= 4; i++) {
+                const el = document.getElementById(`step-${i}`);
+                el.className = "step-item completed";
+                if (i === 1) el.innerHTML = `<i class="fa-solid fa-circle-check"></i> Downloaded & extracted course materials.`;
+                if (i === 2) el.innerHTML = `<i class="fa-solid fa-circle-check"></i> Analysis complete.`;
+                if (i === 3) el.innerHTML = `<i class="fa-solid fa-circle-check"></i> structured JSON generated & validated.`;
+                if (i === 4) el.innerHTML = `<i class="fa-solid fa-circle-check"></i> Question controls rendered.`;
+            }
+        }
+
+        async function triggerQuizGeneration() {
+            const moduleSelect = document.getElementById("module-select");
+            const moduleId = moduleSelect.value;
+            if (!moduleId) {
+                alert("Please select a target course module.");
+                return;
+            }
+
+            const checkedBoxes = document.querySelectorAll("#material-list-container input[type='checkbox']:checked");
+            const fileIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+            
+            if (fileIds.length === 0) {
+                alert("Please select at least one material file.");
+                return;
+            }
+
+            const quizTitle = document.getElementById("quiz-title").value.trim();
+            if (!quizTitle) {
+                alert("Please specify a quiz title.");
+                return;
+            }
+
+            const numMc = parseInt(document.getElementById("count-mc").value) || 0;
+            const numTf = parseInt(document.getElementById("count-tf").value) || 0;
+            const numMatching = parseInt(document.getElementById("count-matching").value) || 0;
+            const pointsPerQ = parseInt(document.getElementById("points-per-q").value) || 1;
+
+            if (numMc + numTf + numMatching === 0) {
+                alert("Please request a count of at least 1 question of any type.");
+                return;
+            }
+
+            const modelSelect = document.getElementById("model-select");
+            const modelId = modelSelect.value;
+            const selectedModel = loadedModels.find(m => m.id === modelId);
+            if (!modelId || !selectedModel || !selectedModel.available) {
+                alert("Please select an available AI model.");
+                return;
+            }
+
             document.getElementById("preview-placeholder").style.display = "none";
             document.getElementById("quiz-preview-content").style.display = "none";
             document.getElementById("gen-loader").style.display = "flex";
             document.getElementById("success-banner").style.display = "none";
 
-            const step1 = document.getElementById("step-1");
-            const step2 = document.getElementById("step-2");
-            const step3 = document.getElementById("step-3");
-            const step4 = document.getElementById("step-4");
+            animateSteps();
 
-            // Reset step UI
-            step1.className = "step-item active";
-            step1.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Extracting slide & note text...`;
-            step2.className = "step-item";
-            step2.innerHTML = `<i class="fa-regular fa-circle"></i> Analyzing conceptual material...`;
-            step3.className = "step-item";
-            step3.innerHTML = `<i class="fa-regular fa-circle"></i> Generating structured JSON...`;
-            step4.className = "step-item";
-            step4.innerHTML = `<i class="fa-regular fa-circle"></i> Rendering question controls...`;
+            try {
+                const includeFeedback = document.getElementById("include-feedback").checked;
+                const res = await fetch("/api/generate-quiz", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        module_id: moduleId,
+                        quiz_title: quizTitle,
+                        file_ids: fileIds,
+                        question_types: {
+                            multiple_choice: numMc,
+                            true_false: numTf,
+                            matching: numMatching
+                        },
+                        points_per_q: pointsPerQ,
+                        include_feedback: includeFeedback,
+                        model_id: modelId
+                    })
+                });
 
-            // Step 1 Complete (600ms)
-            setTimeout(() => {
-                step1.className = "step-item completed";
-                step1.innerHTML = `<i class="fa-solid fa-circle-check"></i> Extracted course materials.`;
+                if (!res.ok) {
+                    let data = {};
+                    try { data = await res.json(); } catch (_) {}
+                    throw new Error(parseApiDetail(data) || "Could not generate quiz. Please try again.");
+                }
+
+                currentActiveQuiz = await res.json();
+                currentActiveQuiz.includes_feedback = includeFeedback;
                 
-                step2.className = "step-item active";
-                step2.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Analyzing conceptual material...`;
-            }, 800);
-
-            // Step 2 Complete (1400ms)
-            setTimeout(() => {
-                step2.className = "step-item completed";
-                step2.innerHTML = `<i class="fa-solid fa-circle-check"></i> Analysis complete (extracted 42 topics).`;
+                completeAllSteps();
                 
-                step3.className = "step-item active";
-                step3.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating structured JSON via Gemini...`;
-            }, 1800);
+                setTimeout(() => {
+                    document.getElementById("gen-loader").style.display = "none";
+                    renderQuizUI();
+                }, 850);
 
-            // Step 3 Complete (2400ms)
-            setTimeout(() => {
-                step3.className = "step-item completed";
-                step3.innerHTML = `<i class="fa-solid fa-circle-check"></i> JSON generated & validated.`;
-                
-                step4.className = "step-item active";
-                step4.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Rendering question controls...`;
-            }, 3000);
-
-            // Finish & Load Preview (3000ms)
-            setTimeout(() => {
+            } catch (err) {
+                clearInterval(stepInterval);
+                console.error("Error generating quiz:", err);
+                alert(err.message || "Could not generate quiz. Please try again.");
                 document.getElementById("gen-loader").style.display = "none";
-                loadQuizPreview();
-            }, 3800);
-        }
-
-        let currentActiveQuiz = null;
-
-        function loadQuizPreview() {
-            const moduleSelect = document.getElementById("module-select");
-            const selectedVal = moduleSelect.value;
-            const userTitle = document.getElementById("quiz-title").value;
-            
-            // Retrieve sample quiz or fall back to week-1 defaults
-            const baseQuiz = generatedQuizDatabase[selectedVal] || generatedQuizDatabase["week-1"];
-            
-            // Clone deep to allow editing without modifying main database
-            currentActiveQuiz = JSON.parse(JSON.stringify(baseQuiz));
-            currentActiveQuiz.title = userTitle; // Override title with user title
-
-            renderQuizUI();
+                document.getElementById("preview-placeholder").style.display = "flex";
+            }
         }
 
         function renderQuizUI() {
             if (!currentActiveQuiz) return;
 
-            document.getElementById("preview-quiz-title").innerText = currentActiveQuiz.title;
-            const totalPoints = currentActiveQuiz.questions.reduce((sum, q) => sum + parseInt(q.points), 0);
+            document.getElementById("preview-quiz-title").innerText = currentActiveQuiz.quiz_title;
+            
+            const totalPoints = currentActiveQuiz.questions.reduce((sum, q) => sum + parseInt(q.points_possible || 1), 0);
             document.getElementById("preview-meta-tag").innerText = `${currentActiveQuiz.questions.length} Questions • ${totalPoints} Points total`;
 
             const container = document.getElementById("questions-list-container");
@@ -1080,25 +1488,51 @@
                 const card = document.createElement("div");
                 card.className = "question-card";
                 card.id = `q-card-${qIndex}`;
-                
+
+                let typeBadgeClass = "badge-mc";
+                let typeLabel = "Multiple Choice";
+                if (q.question_type === "true_false_question") {
+                    typeLabel = "True/False";
+                    typeBadgeClass = "badge-tf";
+                } else if (q.question_type === "matching_question") {
+                    typeLabel = "Matching";
+                    typeBadgeClass = "badge-matching";
+                }
+
                 let answersHTML = "";
-                q.answers.forEach((ans, aIndex) => {
-                    const isCorrect = ans.weight === 100;
-                    answersHTML += `
-                        <div class="answer-option ${isCorrect ? 'correct' : 'incorrect'}">
-                            <i class="${isCorrect ? 'fa-solid fa-circle-check' : 'fa-regular fa-circle'}"></i>
-                            <span style="flex: 1;">${ans.text}</span>
-                            ${ans.comment ? `<span style="font-size: 0.75rem; color: var(--accent-blue); font-style: italic;">(${ans.comment})</span>` : ''}
-                        </div>
-                    `;
-                });
+                if (q.question_type === "matching_question") {
+                    q.answers.forEach(ans => {
+                        answersHTML += `
+                            <div class="answer-option correct">
+                                <i class="fa-solid fa-left-right" style="color: var(--accent-blue);"></i>
+                                <span style="font-weight: 500; margin-right: 0.5rem;">${ans.answer_text}</span>
+                                <i class="fa-solid fa-arrow-right-long" style="color: var(--text-muted); margin: 0 0.5rem;"></i>
+                                <span style="color: var(--success); font-weight: 600;">${ans.answer_match_right}</span>
+                            </div>
+                        `;
+                    });
+                } else {
+                    q.answers.forEach(ans => {
+                        const isCorrect = ans.answer_weight === 100;
+                        answersHTML += `
+                            <div class="answer-option ${isCorrect ? 'correct' : 'incorrect'}">
+                                <i class="${isCorrect ? 'fa-solid fa-circle-check' : 'fa-regular fa-circle'}"></i>
+                                <span style="flex: 1;">${ans.answer_text}</span>
+                                ${ans.answer_comments ? `<span style="font-size: 0.75rem; color: var(--accent-blue); font-style: italic;">(${ans.answer_comments})</span>` : ''}
+                            </div>
+                        `;
+                    });
+                }
 
                 card.innerHTML = `
                     <div class="question-meta">
-                        <span>Question ${qIndex + 1} • ${q.type === 'multiple_choice_question' ? 'Multiple Choice' : 'True/False'}</span>
-                        <span style="color: var(--text-muted);">${q.points} pt</span>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="color: var(--text-muted);">Question ${qIndex + 1}</span>
+                            <span class="type-badge ${typeBadgeClass}">${typeLabel}</span>
+                        </div>
+                        <span style="color: var(--text-muted);">${q.points_possible || 1} pt</span>
                     </div>
-                    <div class="question-title" id="q-text-${qIndex}">${q.text}</div>
+                    <div class="question-title" id="q-text-${qIndex}">${q.question_text}</div>
                     
                     <div class="answers-list" id="q-answers-list-${qIndex}">
                         ${answersHTML}
@@ -1112,23 +1546,34 @@
                     </div>
 
                     <!-- Inline Editing Form -->
-                    <div class="editor-form" id="editor-form-${qIndex}">
+                    <div class="editor-form" id="editor-form-${qIndex}" style="display: none;">
                         <div class="form-group">
                             <label>Question Text</label>
-                            <textarea id="edit-qtext-${qIndex}" rows="2">${q.text}</textarea>
+                            <textarea id="edit-qtext-${qIndex}" rows="2">${q.question_text}</textarea>
                         </div>
                         <div class="form-group">
-                            <label>Answers & Correct Marking</label>
+                            <label>Answers & Pair Matching</label>
                             <div style="display: flex; flex-direction: column; gap: 0.5rem;" id="edit-answers-container-${qIndex}">
-                                ${q.answers.map((ans, aIndex) => `
-                                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                        <input type="radio" name="edit-correct-${qIndex}" value="${aIndex}" ${ans.weight === 100 ? 'checked' : ''}>
-                                        <input type="text" style="padding: 0.5rem;" id="edit-anstext-${qIndex}-${aIndex}" value="${ans.text}">
-                                    </div>
-                                `).join('')}
+                                ${q.question_type === 'matching_question' ? 
+                                    q.answers.map((ans, aIndex) => `
+                                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                            <span style="font-size: 0.85rem; color: var(--text-muted); width: 20px;">${aIndex + 1}:</span>
+                                            <input type="text" style="padding: 0.5rem; flex: 1;" id="edit-anstext-${qIndex}-${aIndex}" value="${ans.answer_text}" placeholder="Left Prompt">
+                                            <i class="fa-solid fa-arrow-right-long" style="color: var(--accent-blue);"></i>
+                                            <input type="text" style="padding: 0.5rem; flex: 1;" id="edit-ansmatch-${qIndex}-${aIndex}" value="${ans.answer_match_right}" placeholder="Right Match">
+                                        </div>
+                                    `).join('')
+                                : 
+                                    q.answers.map((ans, aIndex) => `
+                                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                            <input type="radio" name="edit-correct-${qIndex}" value="${aIndex}" ${ans.answer_weight === 100 ? 'checked' : ''}>
+                                            <input type="text" style="padding: 0.5rem; flex: 1;" id="edit-anstext-${qIndex}-${aIndex}" value="${ans.answer_text}">
+                                        </div>
+                                    `).join('')
+                                }
                             </div>
                         </div>
-                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
                             <button class="btn btn-secondary" style="padding: 0.5rem 1rem; width: auto; font-size: 0.85rem;" onclick="toggleEditForm(${qIndex})">Cancel</button>
                             <button class="btn btn-primary" style="padding: 0.5rem 1rem; width: auto; font-size: 0.85rem;" onclick="saveQuestionEdit(${qIndex})">Save Changes</button>
                         </div>
@@ -1150,18 +1595,27 @@
         function saveQuestionEdit(qIndex) {
             const qText = document.getElementById(`edit-qtext-${qIndex}`).value;
             const q = currentActiveQuiz.questions[qIndex];
-            q.text = qText;
+            q.question_text = qText;
 
-            // Update answer text and correct marker
-            const correctRadioVal = document.querySelector(`input[name="edit-correct-${qIndex}"]:checked`).value;
-            
-            q.answers.forEach((ans, aIndex) => {
-                const ansText = document.getElementById(`edit-anstext-${qIndex}-${aIndex}`).value;
-                ans.text = ansText;
-                ans.weight = (parseInt(correctRadioVal) === aIndex) ? 100 : 0;
-            });
+            if (q.question_type === 'matching_question') {
+                q.answers.forEach((ans, aIndex) => {
+                    const ansText = document.getElementById(`edit-anstext-${qIndex}-${aIndex}`).value;
+                    const matchText = document.getElementById(`edit-ansmatch-${qIndex}-${aIndex}`).value;
+                    ans.answer_text = ansText;
+                    ans.answer_match_left = ansText;
+                    ans.answer_match_right = matchText;
+                });
+            } else {
+                const checkedRadio = document.querySelector(`input[name="edit-correct-${qIndex}"]:checked`);
+                const correctRadioVal = checkedRadio ? parseInt(checkedRadio.value) : 0;
+                
+                q.answers.forEach((ans, aIndex) => {
+                    const ansText = document.getElementById(`edit-anstext-${qIndex}-${aIndex}`).value;
+                    ans.answer_text = ansText;
+                    ans.answer_weight = (correctRadioVal === aIndex) ? 100 : 0;
+                });
+            }
 
-            // Re-render
             renderQuizUI();
         }
 
@@ -1169,20 +1623,65 @@
             currentActiveQuiz = null;
             document.getElementById("quiz-preview-content").style.display = "none";
             document.getElementById("preview-placeholder").style.display = "flex";
+            document.getElementById("success-banner").style.display = "none";
         }
 
-        function deployQuiz() {
-            // Animate deployment success
-            const banner = document.getElementById("success-banner");
-            banner.style.display = "flex";
+        async function deployQuiz() {
+            if (!currentActiveQuiz) return;
             
-            // Auto scroll preview content up to see the success banner
-            document.getElementById("quiz-preview-content").scrollIntoView({ behavior: 'smooth' });
-            
-            // Dim deploy controls or update deploy button state
-            setTimeout(() => {
-                resetPreview();
-            }, 4000);
+            const moduleSelect = document.getElementById("module-select");
+            const moduleId = moduleSelect.value;
+            if (!moduleId) {
+                alert("Please select a module first.");
+                return;
+            }
+
+            const deployBtn = document.querySelector("button[onclick='deployQuiz()']");
+            const originalHTML = deployBtn.innerHTML;
+            deployBtn.disabled = true;
+            deployBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Deploying...`;
+
+            try {
+                const includeFeedback = document.getElementById("include-feedback").checked;
+                const res = await fetch("/api/deploy-quiz", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        module_id: moduleId,
+                        quiz: currentActiveQuiz,
+                        include_feedback: includeFeedback
+                    })
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Server error during deployment");
+                }
+
+                const data = await res.json();
+                
+                // Show success banner with actual Canvas URL
+                const banner = document.getElementById("success-banner");
+                banner.style.display = "flex";
+                banner.innerHTML = `
+                    <i class="fa-solid fa-circle-check"></i>
+                    <div>
+                        <strong>Deploy successful!</strong> Quiz has been uploaded.
+                        <a href="${data.quiz_url}" target="_blank" style="margin-left: 0.5rem; color: var(--accent-blue); text-decoration: underline; font-weight: 600;">
+                            View in Canvas <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.75rem;"></i>
+                        </a>
+                    </div>
+                `;
+
+                document.getElementById("success-banner").scrollIntoView({ behavior: 'smooth' });
+
+            } catch (err) {
+                console.error("Error deploying quiz:", err);
+                alert(`Quiz Deployment Failed: ${err.message}`);
+            } finally {
+                deployBtn.disabled = false;
+                deployBtn.innerHTML = originalHTML;
+            }
         }
 
         function regenerateQuestions() {

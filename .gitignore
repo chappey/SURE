@@ -223,3 +223,6 @@ keys/*.key
 # Local Cache and Temporary Files
 cache/
 
+# Cursor IDE local config (rules/plans stay local)
+.cursor/
+
