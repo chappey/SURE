@@ -61,7 +61,7 @@ Canvas Developer Key URLs must match the deployed host exactly when going live.
 
 Production on a `.edu` subdomain is a **possible future** step, not current scope. When/if IT deploys:
 
-- HTTPS required (session cookies use `same_site=none`, `https_only=True`).
+- Session cookies use `same_site=none` + `https_only=True` (required for LTI cross-site POST back from Canvas).
 - Prefer a subdomain on the same registrable domain as Canvas for iframe embedding — see [docs/embedding.md](./docs/embedding.md).
 - Use env vars for all secrets; mount `keys/` read-only; persist `cache/` on a volume.
 - Run a single worker until LTI in-memory storage is replaced — see `.cursor/rules/04-lti-canvas.mdc`.

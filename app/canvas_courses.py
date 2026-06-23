@@ -56,8 +56,9 @@ def course_is_teacher(canvas, course_id: int) -> bool:
     try:
         canvas.get_course(course_id)
         from app import config
+        from app.auth import oauth_enabled
 
-        if config.CANVAS_API_TOKEN and not (config.CANVAS_CLIENT_ID and config.CANVAS_CLIENT_SECRET):
+        if config.CANVAS_API_TOKEN and not oauth_enabled():
             return True
     except Exception:
         pass
