@@ -10,16 +10,24 @@ To address this, apply one of the following integration methods:
 
 ## Method 1: Load in a New Tab / Window (Recommended)
 
-By configuring the LTI Developer Key to launch the application in a new browser tab/window, it acts as a first-party application. The browser then allows cookies, and the handshake succeeds.
+**Use this for local development** (`localhost:3000` Canvas + `localhost:8000` EasyLearn). Different ports are different sites — browsers block the session cookies LTI needs inside an iframe.
+
+By configuring the LTI Developer Key to launch in a new browser tab, EasyLearn runs first-party and the OIDC handshake succeeds.
 
 ### Canvas Configuration Steps:
 1. Log in to Canvas as an Administrator.
-2. Go to **Admin** > **Developer Keys**.
-3. Edit the **Developer Key** created for **EasyLearn**.
-4. In the placement configurations (e.g., **Course Navigation**):
-   * Set the **Window Target** option to `_blank` (or select **"New Window"** / **"Load in a new tab"** depending on your Canvas interface version).
-5. Save the configuration.
-6. When users click on the tool link, it will display a landing page to **"Load EasyLearn in a new window"** and open cleanly in a new tab.
+2. Go to **Admin** > **Developer Keys** (or **Apps** > **EasyLearn** > **Settings**).
+3. Edit the **EasyLearn** LTI registration.
+4. Under **Course Navigation** placement, set **Window Target** to **New Tab** / `_blank`.
+5. Save.
+
+Or from the repo (with `CANVAS_API_TOKEN` in `.env`):
+
+```bash
+uv run utils/configure_lti_new_tab.py
+```
+
+6. Click **EasyLearn** in the course sidebar — Canvas opens EasyLearn in a new tab instead of an iframe.
 
 ---
 
@@ -32,11 +40,23 @@ If you require the application to be embedded inside the Canvas iframe directly:
 
 ---
 
-## Method 3: Local Browser Exceptions (Testing/Development Only)
+## Method 3: Docker Canvas (`canvas.docker`)
 
-If you need to test the embedded iframe behavior on your local machine:
+Use **`http://canvas.docker:3000`** for Canvas and **`http://canvas.docker:8000`** for EasyLearn (add `127.0.0.1 canvas.docker` to `/etc/hosts`).
+
+1. Run `uv run utils/configure_lti_local_dev.py` to sync the Canvas LTI key URLs
+2. Restart EasyLearn (`uv run main.py`)
+3. Hard-refresh Canvas, click **EasyLearn** in course nav (opens new tab)
+4. You may see a brief Canvas login prompt (`prompt=login`) — sign in if asked
+
+EasyLearn rewrites `localhost:8000` LTI URLs to `canvas.docker:8000` and uses `prompt=login` on HTTP so Chromium can complete OIDC ( `prompt=none` fails when Canvas session cookies are `SameSite=Strict` across ports).
+
+---
+
+## Method 4: Local Browser Exceptions (not recommended for production)
+
+If you must use Chrome with iframe embedding on localhost:
 * **Chrome:** Go to `chrome://settings/cookies` and choose **"Allow third-party cookies"** (or add `localhost` to the allow list).
 * **Safari:** Go to **Preferences** > **Privacy** and disable **"Prevent cross-site tracking"**.
 
-> [!WARNING]
-> Do not ask students or teachers to lower their browser privacy configurations for production environments. Use Method 1 or Method 2 instead.
+> Do not ask students or teachers to lower browser privacy settings in production. Use Method 1 or Method 2 instead.

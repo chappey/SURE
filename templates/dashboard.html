@@ -5,743 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EasyLearn - Quiz Generator Dashboard</title>
     <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="icon" type="image/png" href="/static/logo.png">
-    <!-- Modern Typography: Outfit & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <!-- FontAwesome for Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <style>
-        :root {
-            --bg-primary: #080B10;
-            --bg-secondary: #0F131A;
-            --bg-card: rgba(22, 28, 38, 0.7);
-            --bg-card-border: rgba(255, 255, 255, 0.08);
-            --accent-blue: #38bdf8;
-            --accent-blue-glow: rgba(56, 189, 248, 0.35);
-            --accent-purple: #8b5cf6;
-            --accent-purple-glow: rgba(139, 92, 246, 0.35);
-            --text-main: #F1F5F9;
-            --text-muted: #94A3B8;
-            --success: #10B981;
-            --danger: #EF4444;
-            --sidebar-width: 260px;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-primary);
-            background-image: 
-                radial-gradient(at 10% 20%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
-                radial-gradient(at 90% 80%, rgba(56, 189, 248, 0.15) 0px, transparent 50%);
-            background-attachment: fixed;
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            overflow-x: hidden;
-        }
-
-        h1, h2, h3, h4, .font-outfit {
-            font-family: 'Outfit', sans-serif;
-        }
-
-        /* Sidebar Styling */
-        .sidebar {
-            width: var(--sidebar-width);
-            background-color: var(--bg-secondary);
-            border-right: 1px solid var(--bg-card-border);
-            display: flex;
-            flex-direction: column;
-            padding: 2rem 1.5rem;
-            position: fixed;
-            height: 100vh;
-            left: 0;
-            top: 0;
-            z-index: 100;
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 3rem;
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--text-main);
-            text-decoration: none;
-        }
-
-        .logo i {
-            color: var(--accent-blue);
-            text-shadow: 0 0 10px var(--accent-blue-glow);
-        }
-
-        .nav-links {
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .nav-item a {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 0.75rem 1rem;
-            color: var(--text-muted);
-            text-decoration: none;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-            font-weight: 500;
-        }
-
-        .nav-item a:hover, .nav-item.active a {
-            color: var(--text-main);
-            background-color: rgba(255, 255, 255, 0.05);
-        }
-
-        .nav-item.active a {
-            border-left: 3px solid var(--accent-blue);
-            border-radius: 0 8px 8px 0;
-            background-color: rgba(56, 189, 248, 0.08);
-        }
-
-        .user-profile {
-            margin-top: auto;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding-top: 1.5rem;
-            border-top: 1px solid var(--bg-card-border);
-        }
-
-        .avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            color: white;
-        }
-
-        .user-info {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .user-name {
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-
-        .user-role {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        /* Main Content */
-        .main-container {
-            margin-left: var(--sidebar-width);
-            flex: 1;
-            padding: 2.5rem;
-            max-width: 1400px;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        header {
-            margin-bottom: 2.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header-title h2 {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 0.25rem;
-            background: linear-gradient(135deg, #fff 30%, var(--text-muted) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .header-title p {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-        }
-
-        .course-badge {
-            background: rgba(139, 92, 246, 0.15);
-            border: 1px solid rgba(139, 92, 246, 0.3);
-            color: #c084fc;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .course-switcher select {
-            min-width: 220px;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.85rem;
-            color: #e9d5ff;
-            background: rgba(15, 19, 26, 0.85);
-            border: 1px solid rgba(139, 92, 246, 0.35);
-            border-radius: 8px;
-            cursor: pointer;
-        }
-
-        .course-switcher select option {
-            color: var(--text-main);
-            background: var(--bg-secondary);
-        }
-
-        .view-panel { display: none; }
-        .view-panel.active { display: block; }
-
-        .quiz-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.9rem;
-        }
-
-        .quiz-table th, .quiz-table td {
-            padding: 0.75rem 1rem;
-            text-align: left;
-            border-bottom: 1px solid var(--bg-card-border);
-        }
-
-        .quiz-table th {
-            color: var(--text-muted);
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .status-badge {
-            padding: 0.2rem 0.55rem;
-            border-radius: 10px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .status-draft { background: rgba(148,163,184,0.15); color: #94a3b8; }
-        .status-deployed { background: rgba(56,189,248,0.15); color: #38bdf8; }
-        .status-published { background: rgba(16,185,129,0.15); color: #34d399; }
-
-        .quiz-detail-panel {
-            margin-top: 1.5rem;
-            padding: 1.25rem;
-            background: rgba(15,19,26,0.5);
-            border: 1px solid var(--bg-card-border);
-            border-radius: 12px;
-            display: none;
-        }
-
-        .feedback-bar-row {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 0.5rem;
-            font-size: 0.8rem;
-        }
-
-        .feedback-bar-track {
-            flex: 1;
-            height: 8px;
-            background: rgba(255,255,255,0.06);
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        .feedback-bar-fill {
-            height: 100%;
-            background: var(--accent-purple);
-        }
-
-        .checkbox-row {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .checkbox-row input { width: auto; accent-color: var(--accent-blue); }
-        .checkbox-row label {
-            margin: 0;
-            text-transform: none;
-            font-weight: 500;
-            color: var(--text-main);
-            cursor: pointer;
-        }
-
-        .btn-sm {
-            padding: 0.4rem 0.75rem;
-            font-size: 0.75rem;
-            width: auto;
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-        }
-
-        /* Layout Grid */
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 1.1fr 1.2fr;
-            gap: 2rem;
-            align-items: start;
-        }
-
-        @media (max-width: 1024px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Card / Glassmorphism Style */
-        .glass-card {
-            background-color: var(--bg-card);
-            border: 1px solid var(--bg-card-border);
-            border-radius: 16px;
-            padding: 2rem;
-            backdrop-filter: blur(12px);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-            margin-bottom: 2rem;
-            transition: border-color 0.3s ease;
-        }
-
-        .glass-card:focus-within {
-            border-color: rgba(56, 189, 248, 0.3);
-        }
-
-        .card-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            color: var(--text-main);
-        }
-
-        .card-title i {
-            color: var(--accent-blue);
-        }
-
-        /* Form Controls */
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        label {
-            display: block;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .select-wrapper {
-            position: relative;
-        }
-
-        select, input[type="text"], input[type="number"], textarea {
-            width: 100%;
-            background-color: rgba(15, 19, 26, 0.6);
-            border: 1px solid var(--bg-card-border);
-            border-radius: 8px;
-            color: var(--text-main);
-            padding: 0.85rem 1rem;
-            font-size: 0.95rem;
-            transition: all 0.2s ease;
-            outline: none;
-            font-family: inherit;
-        }
-
-        select:focus, input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
-            border-color: var(--accent-blue);
-            box-shadow: 0 0 0 2px var(--accent-blue-glow);
-            background-color: rgba(15, 19, 26, 0.9);
-        }
-
-        /* File list */
-        .material-list {
-            background: rgba(15, 19, 26, 0.4);
-            border: 1px solid var(--bg-card-border);
-            border-radius: 8px;
-            max-height: 200px;
-            overflow-y: auto;
-            padding: 0.5rem;
-        }
-
-        .material-item {
-            display: flex;
-            align-items: center;
-            padding: 0.65rem 0.75rem;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s ease;
-            gap: 0.75rem;
-        }
-
-        .material-item:hover {
-            background: rgba(255, 255, 255, 0.04);
-        }
-
-        .material-item input[type="checkbox"] {
-            accent-color: var(--accent-blue);
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-        }
-
-        .material-name {
-            font-size: 0.9rem;
-            flex: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .material-meta {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        /* Settings Slider / Toggle Grid */
-        .settings-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-        }
-
-        .range-container {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        input[type="range"] {
-            flex: 1;
-            accent-color: var(--accent-blue);
-            height: 6px;
-            border-radius: 3px;
-            outline: none;
-        }
-
-        .range-val {
-            font-size: 0.9rem;
-            font-weight: 600;
-            width: 25px;
-            text-align: right;
-        }
-
-        /* Button design */
-        .btn {
-            width: 100%;
-            padding: 1rem;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 1rem;
-            border: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
-            transition: all 0.3s ease;
-            font-family: 'Outfit', sans-serif;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            color: white;
-            box-shadow: 0 4px 15px 0 rgba(139, 92, 246, 0.3);
-        }
-
-        .btn-primary:hover {
-            box-shadow: 0 6px 20px 0 rgba(139, 92, 246, 0.5), 0 0 12px var(--accent-blue-glow);
-            transform: translateY(-1px);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--bg-card-border);
-            color: var(--text-main);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        /* Generator Progress Screen (Simulated) */
-        .generator-progress {
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 3rem 0;
-            text-align: center;
-        }
-
-        .loader-orb {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background: radial-gradient(circle, var(--accent-blue), var(--accent-purple));
-            box-shadow: 0 0 30px var(--accent-blue-glow);
-            position: relative;
-            animation: pulse-orb 2s infinite ease-in-out;
-            margin-bottom: 2rem;
-        }
-
-        @keyframes pulse-orb {
-            0% { transform: scale(0.9); box-shadow: 0 0 20px var(--accent-blue-glow); }
-            50% { transform: scale(1.1); box-shadow: 0 0 40px var(--accent-purple-glow); }
-            100% { transform: scale(0.9); box-shadow: 0 0 20px var(--accent-blue-glow); }
-        }
-
-        .steps-container {
-            margin-top: 1.5rem;
-            width: 100%;
-            max-width: 300px;
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
-
-        .step-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            text-align: left;
-        }
-
-        .step-item.active {
-            color: var(--accent-blue);
-            font-weight: 500;
-        }
-
-        .step-item.completed {
-            color: var(--success);
-        }
-
-        .step-item i {
-            width: 16px;
-        }
-
-        /* Live Preview Styling */
-        .preview-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--bg-card-border);
-        }
-
-        .preview-placeholder {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 5rem 2rem;
-            color: var(--text-muted);
-            text-align: center;
-        }
-
-        .preview-placeholder i {
-            font-size: 3.5rem;
-            color: rgba(255, 255, 255, 0.05);
-            margin-bottom: 1.5rem;
-        }
-
-        .quiz-preview-content {
-            display: none;
-        }
-
-        /* Question Card Style */
-        .question-card {
-            background: rgba(15, 19, 26, 0.4);
-            border: 1px solid var(--bg-card-border);
-            border-radius: 12px;
-            padding: 1.25rem;
-            margin-bottom: 1.25rem;
-            position: relative;
-        }
-
-        .question-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.75rem;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: var(--accent-blue);
-            text-transform: uppercase;
-        }
-
-        .question-title {
-            font-size: 1.05rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-        }
-
-        .answers-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .answer-option {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--bg-card-border);
-            border-radius: 6px;
-            padding: 0.75rem 1rem;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            transition: all 0.2s ease;
-        }
-
-        .answer-option.correct {
-            border-color: rgba(16, 185, 129, 0.4);
-            background: rgba(16, 185, 129, 0.08);
-        }
-
-        .answer-option.correct i {
-            color: var(--success);
-        }
-
-        .answer-option.incorrect i {
-            color: var(--text-muted);
-            opacity: 0.3;
-        }
-
-        .q-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 0.75rem;
-            margin-top: 1rem;
-        }
-
-        .action-icon-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            font-size: 0.9rem;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-        }
-
-        .action-icon-btn:hover {
-            color: var(--text-main);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        /* Editing Dialog / Form Overlay */
-        .editor-form {
-            display: none;
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px dashed var(--bg-card-border);
-        }
-
-        /* Styled scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: rgba(15, 19, 26, 0.6);
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        /* Success Message styling */
-        .deploy-success-banner {
-            display: none;
-            background: rgba(16, 185, 129, 0.15);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: #a7f3d0;
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
-            align-items: center;
-            gap: 0.75rem;
-            animation: slide-down 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        .type-badge {
-            padding: 0.25rem 0.6rem;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            text-transform: uppercase;
-        }
-        .badge-mc {
-            background-color: rgba(56, 189, 248, 0.15);
-            color: #38bdf8;
-            border: 1px solid rgba(56, 189, 248, 0.3);
-        }
-        .badge-tf {
-            background-color: rgba(139, 92, 246, 0.15);
-            color: #c084fc;
-            border: 1px solid rgba(139, 92, 246, 0.3);
-        }
-        .badge-matching {
-            background-color: rgba(16, 185, 129, 0.15);
-            color: #34d399;
-            border: 1px solid rgba(16, 185, 129, 0.3);
-        }
-    </style>
 </head>
 <body>
 
     <!-- Sidebar navigation -->
     <div class="sidebar">
         <a href="#" class="logo">
-            <img src="/static/logo.png" alt="EasyLearn Logo" style="width: 32px; height: 32px; border-radius: 6px; object-fit: cover;">
+            <i class="fa-solid fa-graduation-cap logo-icon" aria-hidden="true"></i>
             <span>EasyLearn</span>
         </a>
         <ul class="nav-links">
@@ -753,12 +30,13 @@
             </li>
         </ul>
         <div class="user-profile">
-            <div class="avatar">PC</div>
+            <div class="avatar">--</div>
             <div class="user-info">
-                <span class="user-name">Prof. Steve</span>
-                <span class="user-role">System Admin</span>
+                <span class="user-name">Loading…</span>
+                <span class="user-role">Checking session…</span>
             </div>
         </div>
+        <p id="auth-notice" class="auth-notice" hidden></p>
     </div>
 
     <!-- Main Workspace -->
@@ -875,7 +153,7 @@
 
             <!-- Right Side: Generator State / Preview / Deploy -->
             <div class="workspace-section">
-                <div class="glass-card" style="min-height: 520px; display: flex; flex-direction: column;">
+                <div class="glass-card preview-panel">
                     
                     <!-- Success banner -->
                     <div class="deploy-success-banner" id="success-banner">
@@ -887,9 +165,9 @@
 
                     <!-- Loader panel -->
                     <div class="generator-progress" id="gen-loader">
-                        <div class="loader-orb"></div>
-                        <h4 id="gen-loader-title" style="font-size: 1.25rem; margin-bottom: 0.5rem;">Generating Quiz...</h4>
-                        <p style="color: var(--text-muted); font-size: 0.9rem;">Extracting text structure and preparing structured JSON.</p>
+                        <div class="loader-spinner"></div>
+                        <h4 id="gen-loader-title" class="gen-loader-title">Generating Quiz...</h4>
+                        <p class="gen-loader-subtitle">Extracting text structure and preparing structured JSON.</p>
                         
                         <div class="steps-container">
                             <div class="step-item" id="step-1"><i class="fa-solid fa-spinner fa-spin"></i> Extracting slide & note text...</div>
@@ -903,32 +181,32 @@
                     <div class="preview-placeholder" id="preview-placeholder">
                         <i class="fa-solid fa-sparkles"></i>
                         <h3>Quiz Preview Area</h3>
-                        <p style="max-width: 300px; margin-top: 0.5rem; font-size: 0.9rem;">Configure your source files and settings on the left, then click "Generate" to inspect the questions here.</p>
+                        <p>Configure your source files and settings on the left, then click "Generate" to inspect the questions here.</p>
                     </div>
 
                     <!-- Content Panel (Live generated list) -->
-                    <div class="quiz-preview-content" id="quiz-preview-content" style="flex: 1; display: none; flex-direction: column;">
+                    <div class="quiz-preview-content" id="quiz-preview-content">
                         <div class="preview-header">
                             <div>
-                                <h3 id="preview-quiz-title" style="font-size: 1.3rem; font-weight: 700;">Week 1 Quiz</h3>
-                                <span id="preview-meta-tag" style="font-size: 0.75rem; color: var(--text-muted);">5 Questions • 5 Points total</span>
+                                <h3 id="preview-quiz-title" class="preview-quiz-title">Week 1 Quiz</h3>
+                                <span id="preview-meta-tag" class="preview-meta-tag">5 Questions • 5 Points total</span>
                             </div>
-                            <div style="display: flex; gap: 0.5rem;">
+                            <div class="action-cell">
                                 <button class="action-icon-btn" onclick="regenerateQuestions()"><i class="fa-solid fa-rotate"></i> Retry</button>
                             </div>
                         </div>
 
                         <!-- Questions container -->
-                        <div id="questions-list-container" style="flex: 1; overflow-y: auto; max-height: 480px; padding-right: 0.5rem; margin-bottom: 1.5rem;">
+                        <div id="questions-list-container" class="questions-scroll">
                             <!-- Populated dynamically with Question Cards -->
                         </div>
 
                         <!-- Deploy controls -->
-                        <div style="margin-top: auto; padding-top: 1.5rem; border-top: 1px solid var(--bg-card-border); display: flex; gap: 1rem;">
-                            <button class="btn btn-secondary" onclick="resetPreview()" style="width: 35%;">
+                        <div class="preview-actions">
+                            <button class="btn btn-secondary" onclick="resetPreview()">
                                 <i class="fa-solid fa-trash-can"></i> Discard
                             </button>
-                            <button class="btn btn-primary" onclick="deployQuiz()" style="width: 65%;">
+                            <button class="btn btn-primary" onclick="deployQuiz()">
                                 <i class="fa-solid fa-cloud-arrow-up"></i> Deploy to Canvas
                             </button>
                         </div>
@@ -944,10 +222,10 @@
         <div id="view-quizzes" class="view-panel">
             <div class="glass-card">
                 <h3 class="card-title"><i class="fa-solid fa-list-check"></i> Course Quiz Library</h3>
-                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+                <p class="quizzes-intro">
                     All quizzes generated in this course workspace. Deployed and published status syncs from Canvas.
                 </p>
-                <div style="overflow-x: auto;">
+                <div class="table-scroll">
                     <table class="quiz-table">
                         <thead>
                             <tr>
@@ -960,14 +238,14 @@
                             </tr>
                         </thead>
                         <tbody id="quizzes-table-body">
-                            <tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Loading...</td></tr>
+                            <tr><td colspan="6" class="empty-cell">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
                 <div class="quiz-detail-panel" id="quiz-detail-panel">
-                    <h4 id="quiz-detail-title" style="margin-bottom: 1rem;">Quiz Details</h4>
+                    <h4 id="quiz-detail-title">Quiz Details</h4>
                     <div id="quiz-detail-stats"></div>
-                    <div id="quiz-detail-feedback" style="margin-top: 1rem;"></div>
+                    <div id="quiz-detail-feedback"></div>
                 </div>
             </div>
         </div>
@@ -997,7 +275,79 @@
             loadWorkspace();
         });
 
+        function authModeLabel(mode) {
+            const labels = {
+                oauth: "Canvas OAuth",
+                oauth_pending: "Authorization required",
+                lti_dev: "LTI · dev API key",
+                direct_dev: "Dev · admin API key",
+                anonymous: "Not signed in",
+            };
+            return labels[mode] || mode;
+        }
+
+        function applySessionToProfile(session) {
+            const profileName = document.querySelector(".user-name");
+            const roleEl = document.querySelector(".user-role");
+            const avatar = document.querySelector(".avatar");
+            const notice = document.getElementById("auth-notice");
+
+            const displayName = session.user_name || session.user_email || "Unknown user";
+            if (profileName) profileName.innerText = displayName;
+
+            let roleText = authModeLabel(session.auth_mode);
+            if (session.user_role) roleText = `${session.user_role} · ${roleText}`;
+            if (roleEl) roleEl.innerText = roleText;
+
+            if (avatar) {
+                const initials = displayName.split(/\s+/).map(n => n[0]).join("").toUpperCase().slice(0, 2);
+                avatar.innerText = initials || "?";
+            }
+
+            if (notice) {
+                if (session.auth_mode === "oauth_pending") {
+                    notice.hidden = false;
+                    notice.textContent = "Complete Canvas authorization to load course data.";
+                    notice.className = "auth-notice auth-notice-warn";
+                } else if (session.auth_mode === "lti_dev" && session.launched_from_canvas) {
+                    notice.hidden = false;
+                    notice.textContent =
+                        "Canvas data uses the shared admin API token. Configure OAuth for per-user access.";
+                    notice.className = "auth-notice auth-notice-info";
+                } else if (session.auth_mode === "direct_dev") {
+                    notice.hidden = false;
+                    notice.textContent = "Direct access — not launched from Canvas. Using admin API key.";
+                    notice.className = "auth-notice auth-notice-info";
+                } else {
+                    notice.hidden = true;
+                    notice.textContent = "";
+                }
+            }
+
+            if (session.canvas_course_id) {
+                currentCourseId = session.canvas_course_id;
+            }
+        }
+
+        async function fetchSession() {
+            try {
+                const res = await fetch("/api/session");
+                if (res.status === 401) { window.location.reload(); return; }
+                if (!res.ok) throw new Error("Failed to load session");
+                const session = await res.json();
+                applySessionToProfile(session);
+                return session;
+            } catch (err) {
+                console.error("Error fetching session:", err);
+                const profileName = document.querySelector(".user-name");
+                const roleEl = document.querySelector(".user-role");
+                if (profileName) profileName.innerText = "Session unavailable";
+                if (roleEl) roleEl.innerText = "Re-launch from Canvas";
+            }
+        }
+
         async function loadWorkspace() {
+            await fetchSession();
             await fetchCourseInfo();
             await fetchCourses();
             await fetchModels();
@@ -1157,6 +507,10 @@
                 }
             } catch (err) {
                 console.error("Error fetching course info:", err);
+                const headerTitle = document.querySelector(".header-title p");
+                if (headerTitle && !currentCourseId) {
+                    headerTitle.textContent = "Could not load course — re-launch from Canvas or check CANVAS_COURSE_ID.";
+                }
             }
         }
 
@@ -1172,7 +526,7 @@
                 if (loadedModules.length === 0) {
                     moduleSelect.innerHTML = `<option value="">No modules with PDF/PPTX materials</option>`;
                     document.getElementById("material-list-container").innerHTML =
-                        `<p style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem;">No modules contain supported materials (PDF or PPTX).</p>`;
+                        `<p class="material-empty">No modules contain supported materials (PDF or PPTX).</p>`;
                     return;
                 }
                 loadedModules.forEach(mod => {
@@ -1190,13 +544,13 @@
 
         async function fetchQuizzesOverview() {
             const tbody = document.getElementById("quizzes-table-body");
-            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Loading...</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">Loading...</td></tr>`;
             try {
                 const res = await fetch("/api/quizzes/overview");
                 if (!res.ok) throw new Error("Failed to load quizzes");
                 const quizzes = await res.json();
                 if (quizzes.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">No quizzes in this course workspace yet.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">No quizzes in this course workspace yet.</td></tr>`;
                     return;
                 }
                 tbody.innerHTML = "";
@@ -1214,8 +568,8 @@
                         <td>${q.questions_count || q.question_count || "—"}</td>
                         <td><span class="status-badge status-${status}">${status}</span></td>
                         <td>${statsText}</td>
-                        <td style="display:flex;gap:0.35rem;flex-wrap:wrap;">
-                            ${hasCanvas && canvasUrl ? `<a href="${canvasUrl}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;">Canvas</a>` : ""}
+                        <td class="action-cell">
+                            ${hasCanvas && canvasUrl ? `<a href="${canvasUrl}" target="_blank" class="btn btn-secondary btn-sm btn-link">Canvas</a>` : ""}
                             ${status === "draft" ? `<button class="btn btn-secondary btn-sm" onclick="loadDraft('${q.id}')">Edit</button>` : ""}
                             ${status === "deployed" ? `<button class="btn btn-primary btn-sm" onclick="publishQuiz('${q.id}')">Publish</button>` : ""}
                             ${hasCanvas ? `<button class="btn btn-secondary btn-sm" onclick="showQuizDetails('${q.id}', '${q.title.replace(/'/g, "\\'")}')">Details</button>` : ""}
@@ -1223,7 +577,7 @@
                     tbody.appendChild(tr);
                 });
             } catch (err) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger);">Error loading quizzes</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="error-cell">Error loading quizzes</td></tr>`;
             }
         }
 
@@ -1258,7 +612,7 @@
             const feedbackEl = document.getElementById("quiz-detail-feedback");
             document.getElementById("quiz-detail-title").textContent = title;
             panel.style.display = "block";
-            statsEl.innerHTML = `<p style="color:var(--text-muted);">Loading stats...</p>`;
+            statsEl.innerHTML = `<p class="text-muted-inline">Loading stats...</p>`;
             feedbackEl.innerHTML = "";
 
             try {
@@ -1275,7 +629,7 @@
                         <p><strong>Avg score:</strong> ${stats.score_average != null ? Number(stats.score_average).toFixed(1) : "—"}</p>
                         <p><strong>High / Low:</strong> ${stats.score_high ?? "—"} / ${stats.score_low ?? "—"}</p>`;
                 } else {
-                    statsEl.innerHTML = `<p style="color:var(--text-muted);">No submission statistics yet.</p>`;
+                    statsEl.innerHTML = `<p class="text-muted-inline">No submission statistics yet.</p>`;
                 }
 
                 if (feedback && feedback.has_feedback && feedback.questions.length) {
@@ -1291,10 +645,10 @@
                         feedbackEl.innerHTML += `<div style="margin-bottom:1rem;"><strong>${fq.question_name}</strong>${bars}</div>`;
                     });
                 } else if (feedback && !feedback.has_feedback) {
-                    feedbackEl.innerHTML = `<p style="color:var(--text-muted);">No feedback questions on this quiz.</p>`;
+                    feedbackEl.innerHTML = `<p class="text-muted-inline">No feedback questions on this quiz.</p>`;
                 }
             } catch (err) {
-                statsEl.innerHTML = `<p style="color:var(--danger);">Could not load details.</p>`;
+                statsEl.innerHTML = `<p class="error-cell">Could not load details.</p>`;
             }
         }
 
@@ -1308,7 +662,7 @@
             container.innerHTML = "";
             
             if (!selectedMod || !selectedMod.items || selectedMod.items.length === 0) {
-                container.innerHTML = `<p style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem;">No file attachments in this module.</p>`;
+                container.innerHTML = `<p class="material-empty">No file attachments in this module.</p>`;
                 return;
             }
             
@@ -1667,8 +1021,8 @@
                     <i class="fa-solid fa-circle-check"></i>
                     <div>
                         <strong>Deploy successful!</strong> Quiz has been uploaded.
-                        <a href="${data.quiz_url}" target="_blank" style="margin-left: 0.5rem; color: var(--accent-blue); text-decoration: underline; font-weight: 600;">
-                            View in Canvas <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.75rem;"></i>
+                        <a href="${data.quiz_url}" target="_blank" class="link-canvas">
+                            View in Canvas <i class="fa-solid fa-arrow-up-right-from-square"></i>
                         </a>
                     </div>
                 `;
@@ -1688,5 +1042,6 @@
             triggerQuizGeneration();
         }
     </script>
+    <script src="/static/js/theme-sync.js"></script>
 </body>
 </html>

@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from google.genai import errors as genai_errors
 
 from app import config
+from app.auth import build_session_info
 from app.canvas import download_canvas_file
 from app.canvas_courses import list_teacher_courses, publish_canvas_quiz
 from app.config import CACHE_DIR
@@ -37,6 +38,12 @@ from app.storage import (
 
 logger = logging.getLogger("easylearn")
 router = APIRouter(prefix="/api", tags=["api"])
+
+
+@router.get("/session")
+def get_session(request: Request) -> dict:
+    """Return current auth/session snapshot (no course_id or Canvas API required)."""
+    return build_session_info(request)
 
 
 def _filter_modules_with_supported_materials(modules_data: list) -> list:

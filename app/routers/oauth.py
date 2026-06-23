@@ -11,21 +11,16 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from app import config
+from app.auth import canvas_oauth_authorize_base, canvas_oauth_redirect_uri, easylearn_url
 
 logger = logging.getLogger("easylearn")
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
 
-def _oauth_redirect_uri(request: Request) -> str:
-    if config.CANVAS_OAUTH_REDIRECT_URI:
-        return config.CANVAS_OAUTH_REDIRECT_URI
-    return str(request.url_for("oauth_callback"))
-
-
 @router.get("/login")
 def oauth_login(request: Request) -> RedirectResponse:
     """Redirect the user to Canvas for OAuth2 authorization."""
-    if not config.CANVAS_CLIENT_ID or not config.CANVAS_CLIENT_SECRET:
+    if not config.oauth_enabled():
         raise HTTPException(status_code=400, detail="OAuth2 client credentials are not configured.")
 
     state = secrets.token_hex(16)
@@ -35,11 +30,12 @@ def oauth_login(request: Request) -> RedirectResponse:
         {
             "client_id": config.CANVAS_CLIENT_ID,
             "response_type": "code",
-            "redirect_uri": _oauth_redirect_uri(request),
+            "redirect_uri": canvas_oauth_redirect_uri(),
             "state": state,
         }
     )
-    return RedirectResponse(f"{config.CANVAS_API_URL}/login/oauth2/auth?{params}")
+    authorize_url = f"{canvas_oauth_authorize_base()}/login/oauth2/auth?{params}"
+    return RedirectResponse(authorize_url)
 
 
 @router.get("/callback", name="oauth_callback")
@@ -60,8 +56,8 @@ def oauth_callback(
         raise HTTPException(status_code=400, detail="Invalid state parameter. CSRF verification failed.")
     request.session.pop("oauth_state", None)
 
-    redirect_uri = _oauth_redirect_uri(request)
-    token_url = f"{config.CANVAS_API_URL}/login/oauth2/token"
+    redirect_uri = canvas_oauth_redirect_uri()
+    token_url = f"{config.CANVAS_API_URL.rstrip('/')}/login/oauth2/token"
     payload = {
         "grant_type": "authorization_code",
         "client_id": config.CANVAS_CLIENT_ID,
@@ -70,9 +66,14 @@ def oauth_callback(
         "code": code,
     }
 
+    headers = {}
+    if "localhost" in config.CANVAS_API_URL or "127.0.0.1" in config.CANVAS_API_URL:
+        headers["Host"] = "canvas.docker"
+
     try:
-        response = requests.post(token_url, data=payload, timeout=30)
+        response = requests.post(token_url, data=payload, headers=headers, timeout=30)
         if not response.ok:
+            logger.error("OAuth token exchange failed: %s %s", response.status_code, response.text[:500])
             raise HTTPException(status_code=400, detail="Failed to exchange authorization code with Canvas.")
 
         data = response.json()
@@ -87,7 +88,16 @@ def oauth_callback(
         if user_info.get("name"):
             request.session["user_name"] = user_info["name"]
 
-        return RedirectResponse(url="/", status_code=303)
+        lti_sub = request.session.get("lti_sub")
+        oauth_id = str(user_info.get("id", ""))
+        if lti_sub and oauth_id and lti_sub != oauth_id:
+            logger.warning(
+                "LTI sub (%s) differs from OAuth user id (%s) — OAuth id used for API calls",
+                lti_sub,
+                oauth_id,
+            )
+
+        return RedirectResponse(url=easylearn_url("/"), status_code=303)
     except HTTPException:
         raise
     except requests.RequestException as exc:

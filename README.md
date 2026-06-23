@@ -79,6 +79,8 @@ uv run main.py
 ```
 The server will bind to `http://0.0.0.0:8000`.
 
+For **local multi-user / LTI testing** on self-hosted Canvas, see [docs/canvas-local-multi-user.md](./docs/canvas-local-multi-user.md).
+
 ---
 
 ### Installing the LTI Tool in Canvas

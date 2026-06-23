@@ -1,6 +1,13 @@
+import json
 import sys
 import typing as t
+from html import escape
+
 from fastapi.responses import RedirectResponse, HTMLResponse
+
+from urllib.parse import urlencode
+
+from app import config
 from pylti1p3.request import Request
 from pylti1p3.cookie import CookieService
 from pylti1p3.session import SessionService
@@ -80,17 +87,17 @@ class FastAPICookieService(CookieService):
         self._cookie_data_to_set[self._get_key(name)] = {"value": value, "exp": exp}
 
     def update_response(self, response):
+        secure = False if config.LOCAL_HTTP_LTI else self._request.is_secure()
         for key, cookie_data in self._cookie_data_to_set.items():
-            cookie_kwargs = dict(
+            response.set_cookie(
                 key=key,
                 value=str(cookie_data["value"]),
                 max_age=cookie_data["exp"],
-                secure=True,
+                secure=secure,
                 path="/",
                 httponly=True,
                 samesite="none",
             )
-            response.set_cookie(**cookie_kwargs)
 
 
 class FastAPISessionService(SessionService):
@@ -124,6 +131,121 @@ class FastAPIRedirect(Redirect):
         return response
 
 
+class LocalHttpCookiesAllowedCheckPage:
+    """Cookie probe for HTTP dev Canvas — pylti1p3's default test gives false positives in iframes."""
+
+    def __init__(
+        self,
+        params: t.Mapping[str, str],
+        main_text: str,
+        click_text: str,
+        loading_text: str,
+    ) -> None:
+        self._params = params
+        self._main_text = main_text
+        self._click_text = click_text
+        self._loading_text = loading_text
+
+    def get_html(self) -> str:
+        js_block = """\
+        var urlParams = %s;
+        var htmlEntities = {
+            "&lt;": "<",
+            "&gt;": ">",
+            "&amp;": "&",
+            "&quot;": '"',
+            "&#x27;": "'"
+        };
+
+        function unescapeHtmlEntities(str) {
+            for (var htmlCode in htmlEntities) {
+                str = str.replace(new RegExp(htmlCode, "g"), htmlEntities[htmlCode]);
+            }
+            return str;
+        }
+
+        function getUpdatedUrl() {
+            var newSearchParams = [];
+            for (var key in urlParams) {
+                if (window.location.search.indexOf(key + '=') === -1) {
+                    newSearchParams.push(key + '=' + encodeURIComponent(unescapeHtmlEntities(urlParams[key])));
+                }
+            }
+            var searchParamsStr = newSearchParams.join('&');
+            if (window.location.search !== '') {
+                searchParamsStr = window.location.search + '&' + searchParamsStr;
+            } else {
+                searchParamsStr = '?' + searchParamsStr;
+            }
+            return window.location.protocol + '//' + window.location.hostname +
+                (window.location.port ? (":" + window.location.port) : "") +
+                window.location.pathname + searchParamsStr;
+        }
+
+        function displayLoadingBlock() {
+            document.getElementById("lti1p3-loading-msg").style.display = "block";
+        }
+
+        function displayWarningBlock() {
+            document.getElementById("lti1p3-warning-msg").style.display = "block";
+            var newTabLink = document.getElementById("lti1p3-new-tab-link");
+            var contentUrl = getUpdatedUrl();
+            newTabLink.onclick = function() {
+                window.open(contentUrl , '_blank');
+                newTabLink.parentNode.removeChild(newTabLink);
+            };
+        }
+
+        function checkCookiesAllowed() {
+            // Cross-port localhost is cross-site; iframe launches cannot complete LTI OIDC.
+            if (window.self !== window.top) {
+                displayWarningBlock();
+                return;
+            }
+            // Top-level: verify SameSite=None cookies (what LTI actually uses on HTTP dev).
+            var cookie = "lti1p3_test_cookie=1; path=/; SameSite=None";
+            document.cookie = cookie;
+            var res = document.cookie.indexOf("lti1p3_test_cookie") !== -1;
+            if (res) {
+                document.cookie = "lti1p3_test_cookie=1; expires=Thu, 01-Jan-1970 00:00:01 GMT";
+                displayLoadingBlock();
+                window.location.href = getUpdatedUrl();
+            } else {
+                displayWarningBlock();
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", checkCookiesAllowed);
+        """
+        js_block = js_block % json.dumps({k: escape(v, True) for k, v in self._params.items()})
+
+        return f"""\
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <title></title>
+        <meta charset="UTF-8">
+        <style type="text/css">
+        body {{
+        font-family: Geneva, Arial, Helvetica, sans-serif;
+        }}
+        </style>
+        <script type="text/javascript">
+        {js_block}
+        </script>
+        </head>
+        <body>
+        <div id="lti1p3-loading-msg" style="display: none;">
+        {self._loading_text}
+        </div>
+        <div id="lti1p3-warning-msg" style="display: none;">
+        <p><strong>{self._main_text}</strong> <a href="javascript: void(0);" id="lti1p3-new-tab-link">{self._click_text}</a></p>
+        </div>
+        </body>
+        </html>
+        """
+
+
 class FastAPIOIDCLogin(OIDCLogin):
     def __init__(
         self,
@@ -153,6 +275,85 @@ class FastAPIOIDCLogin(OIDCLogin):
 
     def get_response(self, html: str) -> HTMLResponse:
         return HTMLResponse(content=html)
+
+    def get_cookies_allowed_js_check(self) -> str:
+        if not config.LOCAL_HTTP_LTI:
+            return super().get_cookies_allowed_js_check()
+
+        params_lst = [
+            "iss",
+            "login_hint",
+            "target_link_uri",
+            "lti_message_hint",
+            "lti_deployment_id",
+            "client_id",
+        ]
+        params_lst.extend(self.get_additional_login_params())
+        params: dict[str, str] = {"lti1p3_new_window": "1"}
+        for param_key in params_lst:
+            param_value = self._get_request_param(param_key)
+            if param_value:
+                params[param_key] = str(param_value)
+
+        page = LocalHttpCookiesAllowedCheckPage(
+            params,
+            self._cookies_unavailable_msg_main_text,
+            self._cookies_unavailable_msg_click_text,
+            self._cookies_check_loading_text,
+        )
+        return page.get_html()
+
+    def _prepare_redirect_url(self, launch_url: str) -> str:
+        """OIDC redirect; HTTP dev uses prompt=login and canvas.docker-aligned URLs."""
+        from pylti1p3.exception import OIDCException
+
+        launch_url = config.rewrite_tool_url(launch_url)
+        if not launch_url:
+            raise OIDCException("No launch URL configured")
+
+        if self._launch_data_storage:
+            self.set_launch_data_storage(self._launch_data_storage)
+
+        self._registration = self.validate_oidc_login()
+
+        state = "state-" + self._get_uuid()
+        self._cookie_service.set_cookie(state, state, 5 * 60)
+
+        nonce = self._generate_nonce()
+        self._session_service.save_nonce(nonce)
+        if self._state_params:
+            self._session_service.save_state_params(state, self._state_params)
+
+        client_id = self._registration.get_client_id()
+        assert client_id is not None, "Client id should not be None"
+        auth_login_url = self._registration.get_auth_login_url()
+        assert auth_login_url is not None, "Auth login url should not be None"
+        auth_login_url = config.rewrite_canvas_url(auth_login_url)
+
+        # prompt=none fails on HTTP Canvas when session cookies are SameSite=Strict
+        # (cross-port redirect from :8000 → :3000). prompt=login forces re-auth.
+        prompt = "login" if config.LOCAL_HTTP_LTI else "none"
+
+        auth_params = {
+            "scope": "openid",
+            "response_type": "id_token",
+            "response_mode": "form_post",
+            "prompt": prompt,
+            "client_id": client_id,
+            "redirect_uri": launch_url,
+            "state": state,
+            "nonce": nonce,
+            "login_hint": self._get_request_param("login_hint"),
+        }
+
+        lti_message_hint = self._get_request_param("lti_message_hint")
+        if lti_message_hint:
+            auth_params["lti_message_hint"] = lti_message_hint
+
+        return auth_login_url + "?" + urlencode(auth_params)
+
+
+EasyLearnOIDCLogin = FastAPIOIDCLogin
 
 
 class FastAPILTIRequest(MessageLaunch):
