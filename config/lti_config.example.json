@@ -1,0 +1,26 @@
+{
+  "https://canvas.instructure.com": [
+    {
+      "default": true,
+      "client_id": "<LTI client id from Canvas>",
+      "auth_login_url": "https://canvas.example.com/api/lti/authorize_redirect",
+      "auth_token_url": "https://canvas.example.com/login/oauth2/token",
+      "key_set_url": "https://canvas.example.com/api/lti/security/jwks",
+      "private_key_file": "../keys/private.key",
+      "public_key_file": "../keys/public.key",
+      "deployment_ids": ["<deployment id>"]
+    }
+  ],
+  "https://canvas.example.com": [
+    {
+      "default": true,
+      "client_id": "<LTI client id from Canvas>",
+      "auth_login_url": "https://canvas.example.com/api/lti/authorize_redirect",
+      "auth_token_url": "https://canvas.example.com/login/oauth2/token",
+      "key_set_url": "https://canvas.example.com/api/lti/security/jwks",
+      "private_key_file": "../keys/private.key",
+      "public_key_file": "../keys/public.key",
+      "deployment_ids": ["<deployment id>"]
+    }
+  ]
+}

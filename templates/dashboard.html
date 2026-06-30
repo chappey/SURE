@@ -279,8 +279,6 @@
             const labels = {
                 oauth: "Canvas OAuth",
                 oauth_pending: "Authorization required",
-                lti_dev: "LTI · dev API key",
-                direct_dev: "Dev · admin API key",
                 anonymous: "Not signed in",
             };
             return labels[mode] || mode;
@@ -309,15 +307,6 @@
                     notice.hidden = false;
                     notice.textContent = "Complete Canvas authorization to load course data.";
                     notice.className = "auth-notice auth-notice-warn";
-                } else if (session.auth_mode === "lti_dev" && session.launched_from_canvas) {
-                    notice.hidden = false;
-                    notice.textContent =
-                        "Canvas data uses the shared admin API token. Configure OAuth for per-user access.";
-                    notice.className = "auth-notice auth-notice-info";
-                } else if (session.auth_mode === "direct_dev") {
-                    notice.hidden = false;
-                    notice.textContent = "Direct access — not launched from Canvas. Using admin API key.";
-                    notice.className = "auth-notice auth-notice-info";
                 } else {
                     notice.hidden = true;
                     notice.textContent = "";
@@ -509,7 +498,7 @@
                 console.error("Error fetching course info:", err);
                 const headerTitle = document.querySelector(".header-title p");
                 if (headerTitle && !currentCourseId) {
-                    headerTitle.textContent = "Could not load course — re-launch from Canvas or check CANVAS_COURSE_ID.";
+                    headerTitle.textContent = "Could not load course — re-launch EasyLearn from Canvas.";
                 }
             }
         }

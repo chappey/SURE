@@ -8,7 +8,6 @@ import logging
 import sys
 from pathlib import Path
 
-# Add project root to path to resolve absolute app.* imports
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -26,6 +25,16 @@ log = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Create a Canvas course from offline export (PDF/PPTX attachments)."
+    )
+    parser.add_argument(
+        "export_dir",
+        help="Path to the course export directory (relative to repo root or absolute)",
+    )
+    parser.add_argument(
+        "--account-id",
+        type=int,
+        default=1,
+        help="Canvas account id when creating a new course (default: 1)",
     )
     parser.add_argument(
         "--dry-run",
@@ -70,8 +79,7 @@ def main() -> int:
         format="%(levelname)s: %(message)s",
     )
 
-    export_dir = config.COURSE_EXPORT_DIR or "Spring-2026-COMPUTER-SCIENCE-PRINCIPLES-CS-10051-600--2026-May-27_17-59-33-518"
-    export_root = resolve_export_root(PROJECT_ROOT, export_dir)
+    export_root = resolve_export_root(PROJECT_ROOT, args.export_dir)
     data = load_course_data(export_root)
     attachments = iter_attachments(data, export_root)
 
@@ -97,17 +105,16 @@ def main() -> int:
         return 0
 
     canvas = get_canvas()
-    account_id = int(config.CANVAS_ACCOUNT_ID or "1")
 
     if args.course_id:
         course = canvas.get_course(args.course_id)
         log.info("Using existing course id=%s: %s", course.id, course.name)
     else:
-        account = canvas.get_account(account_id)
+        account = canvas.get_account(args.account_id)
         course = account.create_course(
             course={
                 "name": data.get("title", "Imported Course"),
-                "course_code": "CS-10051-600",
+                "course_code": "IMPORT",
                 "license": "private",
             }
         )

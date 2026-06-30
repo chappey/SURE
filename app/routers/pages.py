@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.responses import Response
 
-from app.auth import easylearn_url, needs_oauth_authorization
+from app.auth import easylearn_url, lti_launched, needs_oauth_authorization
 from app.config import STATIC_DIR, TEMPLATES_DIR
 
 router = APIRouter(tags=["pages"])
@@ -23,6 +23,8 @@ def get_favicon() -> FileResponse:
 @router.get("/")
 def get_dashboard(request: Request) -> Response:
     """Serve the quiz dashboard; redirect to OAuth when multi-instructor mode is enabled."""
+    if not lti_launched(request):
+        return FileResponse(TEMPLATES_DIR / "launch_required.html")
     if needs_oauth_authorization(request):
         return RedirectResponse(url=easylearn_url("/oauth/login"))
     return FileResponse(TEMPLATES_DIR / "dashboard.html")
