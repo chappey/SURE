@@ -17,25 +17,31 @@ Guide for humans and AI agents working in this repository.
 | `app/config.py` | All environment variables — single source of truth |
 | `app/lti.py` | FastAPI adapter for `pylti1p3` |
 | `app/schemas.py` | Pydantic models (`WeeklyQuiz`, etc.) |
-| `config/lti_config.json` | LTI tool registration per Canvas issuer URL |
+| `config/lti_config.json` | LTI tool registration (copy from `lti_config.example.json`) |
+| `docker-compose.yml` | Production stack (+ optional Cloudflare tunnel profile) |
+| `Dockerfile` | Container image |
 | `keys/` | RSA keypair for LTI signing (gitignored) |
 | `cache/` | Downloaded files and quiz drafts (gitignored) |
 | `templates/` | Dashboard HTML |
 | `static/` | Favicon, logo |
-| `utils/` | CLI utilities (verify Canvas, offline export, batch quiz gen) |
-| `docs/embedding.md` | Canvas iframe / cookie integration notes |
+| `utils/` | CLI utilities (setup doctor, LTI config, course/user generation, quiz gen) |
+| `docs/` | Setup, LTI/OAuth, architecture, demo, testing, deployment, CLI guides |
 
 ## Dev workflow
 
 ```bash
+cp .env.example .env
+cp config/lti_config.example.json config/lti_config.json
 uv sync
-cp .env.example .env   # fill in tokens/keys
-uv run main.py         # http://0.0.0.0:8000
+uv run utils/configure_oauth.py --write-env
+docker compose up -d --build
 ```
+
+Bare-metal: `uv run main.py` after the same `.env` setup.
 
 - Python >= 3.14, dependencies via **`uv`** only.
 - Never commit `.env`, `keys/*.key`, or `cache/` contents.
-- See [README.md](./README.md) for LTI key generation and Canvas Developer Key setup.
+- `CANVAS_API_TOKEN` is CLI-only; the web app uses LTI + per-professor OAuth.
 
 ## Agent guardrails
 
@@ -57,13 +63,6 @@ uv run main.py         # http://0.0.0.0:8000
 
 Canvas Developer Key URLs must match the deployed host exactly when going live.
 
-## Future deploy (optional)
+## Deploy
 
-Production on a `.edu` subdomain is a **possible future** step, not current scope. When/if IT deploys:
-
-- Session cookies use `same_site=none` + `https_only=True` (required for LTI cross-site POST back from Canvas).
-- Prefer a subdomain on the same registrable domain as Canvas for iframe embedding — see [docs/embedding.md](./docs/embedding.md).
-- Use env vars for all secrets; mount `keys/` read-only; persist `cache/` on a volume.
-- Run a single worker until LTI in-memory storage is replaced — see `.cursor/rules/04-lti-canvas.mdc`.
-
-Checklist placeholder: [deploy/README.md](./deploy/README.md).
+Primary path: [docker-compose.yml](./docker-compose.yml) + [docs/deployment.md](./docs/deployment.md).

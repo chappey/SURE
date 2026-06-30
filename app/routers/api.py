@@ -16,6 +16,8 @@ from app.config import CACHE_DIR
 from app.dependencies import (
     CanvasClientDep,
     CourseIdDep,
+    RequireLtiLaunchDep,
+    RequireTeacherDep,
     validate_course_access,
 )
 from app.deployment import deploy_quiz_to_canvas, find_module_by_id_or_name
@@ -34,6 +36,7 @@ from app.storage import (
     list_quizzes,
     save_course_modules,
     save_quiz_draft,
+    update_quiz_draft,
 )
 
 logger = logging.getLogger("easylearn")
@@ -65,6 +68,8 @@ def get_course_info(
     request: Request,
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
 ) -> dict:
     """Retrieve details for the current active course."""
     try:
@@ -85,10 +90,15 @@ def get_course_info(
 
 
 @router.get("/courses")
-def get_courses(request: Request, canvas: CanvasClientDep) -> list:
+def get_courses(
+    request: Request,
+    canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> list:
     """List courses where the current user is a teacher."""
     try:
-        active_id = request.session.get("canvas_course_id") or config.CANVAS_COURSE_ID
+        active_id = request.session.get("canvas_course_id")
         include_id = int(active_id) if active_id else None
         return list_teacher_courses(canvas, include_course_id=include_id)
     except Exception as exc:
@@ -101,6 +111,8 @@ def switch_course(
     request: Request,
     body: SwitchCourseRequest,
     canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
 ) -> dict:
     """Switch the active course workspace."""
     validate_course_access(request, body.course_id, canvas)
@@ -116,13 +128,18 @@ def switch_course(
 
 
 @router.get("/models", response_model=list[ModelInfo])
-def api_models() -> list[ModelInfo]:
+def api_models(_: RequireLtiLaunchDep, __: RequireTeacherDep) -> list[ModelInfo]:
     """Return curated AI models available for quiz generation."""
     return [ModelInfo.model_validate(entry) for entry in list_models_for_api()]
 
 
 @router.get("/modules")
-def get_modules(course_id: CourseIdDep, canvas: CanvasClientDep) -> list:
+def get_modules(
+    course_id: CourseIdDep,
+    canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> list:
     """Retrieve modules and file attachments for the active course."""
     cached_data = get_cached_modules(course_id)
     if cached_data is not None:
@@ -176,6 +193,8 @@ def api_generate_quiz(
     body: GenerateQuizRequest,
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
 ):
     """Download files, extract text, and generate a quiz via the selected AI model."""
     model_entry = None
@@ -273,6 +292,8 @@ def api_deploy_quiz(
     body: DeployQuizRequest,
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
 ) -> dict:
     """Deploy a generated quiz to Canvas."""
     try:
@@ -295,8 +316,7 @@ def api_deploy_quiz(
             include_feedback=include_feedback,
         )
 
-        base_url = config.CANVAS_API_URL.rstrip("/")
-        quiz_url = f"{base_url}/courses/{course_id}/quizzes/{deployed_quiz.id}"
+        quiz_url = config.canvas_quiz_url(course_id, deployed_quiz.id)
 
         if body.quiz.id:
             quiz_dict = body.quiz.model_dump()
@@ -304,7 +324,6 @@ def api_deploy_quiz(
             quiz_dict["published"] = False
             quiz_dict["canvas_quiz_id"] = deployed_quiz.id
             quiz_dict["quiz_id"] = deployed_quiz.id
-            quiz_dict["quiz_url"] = quiz_url
             quiz_dict["module_id"] = module.id
             quiz_dict["module_name"] = module.name
             quiz_dict["includes_feedback"] = include_feedback
@@ -329,7 +348,11 @@ def api_deploy_quiz(
 
 
 @router.get("/quizzes")
-def get_quizzes(course_id: CourseIdDep) -> list:
+def get_quizzes(
+    course_id: CourseIdDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> list:
     """List saved quiz drafts for the active course."""
     try:
         return list_quizzes(course_id)
@@ -342,6 +365,8 @@ def get_quizzes(course_id: CourseIdDep) -> list:
 def get_quizzes_overview(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
     status: str | None = Query(default=None, pattern="^(draft|deployed|published)$"),
 ) -> list:
     """List quizzes with Canvas publish status synced."""
@@ -356,12 +381,22 @@ def get_quizzes_overview(
 
 
 @router.get("/quizzes/{quiz_id}")
-def get_quiz_by_id(course_id: CourseIdDep, quiz_id: str) -> dict:
+def get_quiz_by_id(
+    course_id: CourseIdDep,
+    quiz_id: str,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> dict:
     """Retrieve a specific saved quiz draft."""
     try:
         quiz = get_quiz_draft(course_id, quiz_id)
         if not quiz:
             raise HTTPException(status_code=404, detail="Quiz draft not found.")
+        canvas_quiz_id = quiz.get("canvas_quiz_id") or quiz.get("quiz_id")
+        if canvas_quiz_id:
+            quiz["quiz_url"] = config.canvas_quiz_url(course_id, canvas_quiz_id)
+        else:
+            quiz.pop("quiz_url", None)
         return quiz
     except HTTPException:
         raise
@@ -375,6 +410,8 @@ def get_quiz_stats_endpoint(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
     quiz_id: str,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
 ) -> dict:
     """Return Canvas quiz statistics for a deployed quiz."""
     draft = get_quiz_draft(course_id, quiz_id)
@@ -399,6 +436,8 @@ def get_quiz_feedback_endpoint(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
     quiz_id: str,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
 ) -> dict:
     """Aggregate student feedback Likert responses from Canvas."""
     draft = get_quiz_draft(course_id, quiz_id)
@@ -424,6 +463,8 @@ def publish_quiz_endpoint(
     canvas: CanvasClientDep,
     quiz_id: str,
     request: Request,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
 ) -> dict:
     """Publish a deployed quiz in Canvas."""
     draft = get_quiz_draft(course_id, quiz_id)
@@ -437,11 +478,10 @@ def publish_quiz_endpoint(
         course = canvas.get_course(course_id)
         publish_canvas_quiz(course, int(canvas_quiz_id))
 
-        draft["published"] = True
-        save_quiz_draft(
+        update_quiz_draft(
             course_id=course_id,
             quiz_id=quiz_id,
-            quiz_data=draft,
+            patch={"published": True},
             created_by=request.session.get("user_name", "Instructor"),
         )
         return {"status": "success", "published": True, "canvas_quiz_id": int(canvas_quiz_id)}

@@ -13,7 +13,7 @@ from app.canvas_courses import (
 )
 from app.feedback import aggregate_feedback, is_feedback_question
 from app.quiz_statistics import parse_quiz_statistics
-from app.storage import get_course_dir, get_quiz_draft, list_quizzes
+from app.storage import get_course_dir, get_quiz_draft, list_quizzes, write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -50,23 +50,16 @@ def get_cached_stats(course_id: int | str, canvas_quiz_id: int) -> dict[str, Any
 
 
 def save_stats_cache(course_id: int | str, canvas_quiz_id: int, data: dict[str, Any]) -> None:
-    import json
-
-    path = _stats_cache_path(course_id, canvas_quiz_id)
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    write_json_atomic(_stats_cache_path(course_id, canvas_quiz_id), data)
 
 
 def _ensure_quiz_url(summary: dict[str, Any], course_id: int) -> dict[str, Any]:
-    """Ensure overview rows always include a Canvas link when deployed."""
+    """Derive the browser-facing Canvas link on read (never persisted)."""
     from app import config
 
-    if summary.get("quiz_url"):
-        return summary
     canvas_quiz_id = summary.get("canvas_quiz_id")
     if canvas_quiz_id:
-        base = config.CANVAS_API_URL.rstrip("/")
-        summary["quiz_url"] = f"{base}/courses/{course_id}/quizzes/{canvas_quiz_id}"
+        summary["quiz_url"] = config.canvas_quiz_url(course_id, canvas_quiz_id)
     return summary
 
 

@@ -33,6 +33,11 @@ def parse_args() -> argparse.Namespace:
         description="Generate a weekly quiz from export materials via Gemini."
     )
     parser.add_argument(
+        "--export-dir",
+        required=True,
+        help="Path to the course export directory (relative to repo root or absolute)",
+    )
+    parser.add_argument(
         "--week",
         required=True,
         help="Week label (e.g. 1, 'Week 1', '6-7')",
@@ -40,8 +45,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--course-id",
         type=int,
-        default=None,
-        help="Canvas course id (default: CANVAS_COURSE_ID from config)",
+        required=True,
+        help="Canvas course id to deploy the quiz into",
     )
     parser.add_argument(
         "--model-id",
@@ -113,8 +118,7 @@ def main() -> int:
         format="%(levelname)s: %(message)s",
     )
 
-    export_dir = config.COURSE_EXPORT_DIR or "Spring-2026-COMPUTER-SCIENCE-PRINCIPLES-CS-10051-600--2026-May-27_17-59-33-518"
-    export_root = resolve_export_root(PROJECT_ROOT, export_dir)
+    export_root = resolve_export_root(PROJECT_ROOT, args.export_dir)
     data = load_course_data(export_root)
     module = get_week_module(data, args.week)
     week_name = module.get("name", normalize_week_label(args.week))
@@ -141,14 +145,13 @@ def main() -> int:
             print("\n(--no-upload: skipped Canvas)")
         return 0
 
-    course_id = args.course_id or int(config.CANVAS_COURSE_ID or "2")
+    course_id = args.course_id
     canvas = get_canvas()
     course = canvas.get_course(course_id)
 
     deployed = deploy_quiz_to_canvas(course, week_name, quiz)
-    base = config.CANVAS_API_URL or "http://localhost:3000"
     print()
-    print(f"Quiz created (draft): {base}/courses/{course_id}/quizzes/{deployed.id}")
+    print(f"Quiz created (draft): {config.canvas_quiz_url(course_id, deployed.id)}")
     print(f"Module: {week_name}")
     return 0
 

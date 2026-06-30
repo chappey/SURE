@@ -1,0 +1,47 @@
+# EasyLearn production stack.
+#
+#   cp .env.example .env   # fill secrets
+#   docker compose up -d --build
+#
+# With Cloudflare Tunnel (set TUNNEL_TOKEN in .env):
+#   docker compose --profile tunnel up -d --build
+
+services:
+  easylearn:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${EASYLEARN_PORT:-8000}:8000"
+    volumes:
+      - ./keys:/app/keys:ro
+      - ./config/lti_config.json:/app/config/lti_config.json:ro
+      - ./cache:/app/cache
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "uv",
+          "run",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/session')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  tunnel:
+    profiles:
+      - tunnel
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    network_mode: host
+    command: tunnel --no-autoupdate --protocol http2 run --token ${TUNNEL_TOKEN}
+    depends_on:
+      easylearn:
+        condition: service_healthy

@@ -19,7 +19,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from app import config
 from app.auth import easylearn_url, oauth_enabled
 from app.config import STATIC_DIR
-from app.dev_bootstrap import ensure_direct_dev_session
 from app.logging_config import configure_logging
 from app.routers import api, lti_routes, oauth, pages
 
@@ -31,7 +30,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.middleware("http")
 async def lti_public_url_redirect(request: Request, call_next):
-    """Send LTI traffic to EASYLEARN_PUBLIC_URL (canvas.docker:8000, not localhost:8000)."""
+    """Send LTI traffic to EASYLEARN_PUBLIC_URL (e.g. when Canvas sees a different hostname)."""
     if request.url.path not in ("/login", "/launch", "/jwks"):
         return await call_next(request)
 
@@ -54,8 +53,6 @@ async def log_requests(request: Request, call_next):
     start_time = time.perf_counter()
     path = request.url.path
     method = request.method
-    if path == "/" or path.startswith("/api/"):
-        ensure_direct_dev_session(request)
     logger.info("Incoming request: %s %s", method, path)
 
     try:
@@ -91,9 +88,23 @@ app.add_middleware(
 
 @app.exception_handler(InvalidAccessToken)
 def handle_invalid_token(request: Request, exc: InvalidAccessToken):
-    """Clear expired Canvas tokens and prompt for re-authorization."""
+    """Attempt a one-shot refresh; otherwise clear tokens and prompt for re-authorization."""
+    from app.canvas_oauth import clear_tokens, try_refresh
+
+    if try_refresh(request):
+        logger.info("Canvas token refreshed after 401; asking client to retry.")
+        if request.url.path.startswith("/api/"):
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": "token_refreshed",
+                    "detail": "Your Canvas session was refreshed. Please retry.",
+                },
+            )
+        return RedirectResponse(url=str(request.url), status_code=303)
+
     logger.warning("Canvas API token is invalid or expired. Clearing from session.")
-    request.session.pop("canvas_user_token", None)
+    clear_tokens(request)
 
     if request.url.path.startswith("/api/"):
         return JSONResponse(

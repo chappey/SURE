@@ -21,19 +21,17 @@ class Settings(BaseSettings):
 
     CANVAS_API_URL: str = ""
     CANVAS_API_TOKEN: str = ""
-    CANVAS_COURSE_ID: str = ""
-    CANVAS_ACCOUNT_ID: str = "1"
     CANVAS_CLIENT_ID: str = ""
     CANVAS_CLIENT_SECRET: str = ""
     CANVAS_OAUTH_REDIRECT_URI: str = ""
+    # Space-separated Canvas API scopes — only when the OAuth key enforces scopes.
+    CANVAS_OAUTH_SCOPES: str = ""
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_HTTP_REFERER: str = ""
     OPENROUTER_APP_NAME: str = "EasyLearn"
-    COURSE_EXPORT_DIR: str = ""
     SESSION_SECRET_KEY: str = "some-very-secret-key-change-in-production"
-    # Browser-facing URLs for LTI (Docker: http://canvas.docker:3000 / :8000)
     CANVAS_PUBLIC_URL: str = ""
     EASYLEARN_PUBLIC_URL: str = ""
 
@@ -54,8 +52,8 @@ def _local_http_lti(url: str) -> bool:
 # Keep SameSite=None for cross-site POST to /launch; omit Secure on HTTP dev hosts.
 LOCAL_HTTP_LTI = _local_http_lti(settings.CANVAS_API_URL)
 SESSION_HTTPS_ONLY = not LOCAL_HTTP_LTI
-# Session is first-party on the tool host after launch; Lax works on canvas.docker HTTP.
-# (SameSite=None without Secure is rejected by Chromium on non-localhost HTTP.)
+# For plain-HTTP local development (common with Canvas in Docker), use Lax cookies.
+# On public HTTPS, use None+Secure for cross-site LTI POSTs.
 SESSION_SAME_SITE: str = "lax" if LOCAL_HTTP_LTI else "none"
 
 
@@ -63,22 +61,33 @@ def _effective_canvas_public() -> str:
     explicit = settings.CANVAS_PUBLIC_URL.strip()
     if explicit:
         return explicit.rstrip("/")
-    api = settings.CANVAS_API_URL.rstrip("/")
-    if _local_http_lti(api) and ("localhost" in api or "127.0.0.1" in api):
-        return "http://canvas.docker:3000"
-    return api
+    # Default to the API URL. For local Docker Canvas setups that use a different
+    # browser-facing hostname (e.g. canvas.docker), set CANVAS_PUBLIC_URL explicitly.
+    return settings.CANVAS_API_URL.rstrip("/")
 
 
 def _effective_easylearn_public() -> str:
     explicit = settings.EASYLEARN_PUBLIC_URL.strip()
     if explicit:
         return explicit.rstrip("/")
+    # Derive from the Canvas public hostname on a conventional port.
+    # For custom ports or different host, set EASYLEARN_PUBLIC_URL explicitly.
     host = urlparse(_effective_canvas_public()).hostname or "localhost"
-    return f"http://{host}:8000"
+    scheme = "https" if not _local_http_lti(settings.CANVAS_API_URL) else "http"
+    return f"{scheme}://{host}:8000"
 
 
 CANVAS_PUBLIC_URL = _effective_canvas_public()
 EASYLEARN_PUBLIC_URL = _effective_easylearn_public()
+
+
+def canvas_quiz_url(course_id: int | str, canvas_quiz_id: int | str) -> str:
+    """Browser-facing Canvas quiz link, derived from the configured public domain.
+
+    Single source of truth for quiz URLs. Always computed — never persisted —
+    so the link follows CANVAS_PUBLIC_URL even if the domain changes later.
+    """
+    return f"{CANVAS_PUBLIC_URL.rstrip('/')}/courses/{course_id}/quizzes/{canvas_quiz_id}"
 
 
 _OAUTH_PLACEHOLDER_VALUES = frozenset(
@@ -145,15 +154,13 @@ LTI_CONFIG_PATH = PROJECT_ROOT / "config" / "lti_config.json"
 # Backward-compatible module-level exports (used across app/ and utils/)
 CANVAS_API_URL = settings.CANVAS_API_URL
 CANVAS_API_TOKEN = settings.CANVAS_API_TOKEN
-CANVAS_COURSE_ID = settings.CANVAS_COURSE_ID
-CANVAS_ACCOUNT_ID = settings.CANVAS_ACCOUNT_ID
 CANVAS_CLIENT_ID = settings.CANVAS_CLIENT_ID
 CANVAS_CLIENT_SECRET = settings.CANVAS_CLIENT_SECRET
 CANVAS_OAUTH_REDIRECT_URI = settings.CANVAS_OAUTH_REDIRECT_URI
+CANVAS_OAUTH_SCOPES = settings.CANVAS_OAUTH_SCOPES
 GEMINI_API_KEY = settings.GEMINI_API_KEY
 GEMINI_MODEL = settings.GEMINI_MODEL
 OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY
 OPENROUTER_HTTP_REFERER = settings.OPENROUTER_HTTP_REFERER
 OPENROUTER_APP_NAME = settings.OPENROUTER_APP_NAME
-COURSE_EXPORT_DIR = settings.COURSE_EXPORT_DIR
 SESSION_SECRET_KEY = settings.SESSION_SECRET_KEY

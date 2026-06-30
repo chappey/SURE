@@ -28,7 +28,7 @@ def load_course_data(export_root: Path) -> dict[str, Any]:
 
 
 def resolve_export_root(project_root: Path, export_dir: str) -> Path:
-    """Resolve COURSE_EXPORT_DIR relative to project root."""
+    """Resolve an export directory path relative to project root when needed."""
     root = Path(export_dir)
     if not root.is_absolute():
         root = project_root / root

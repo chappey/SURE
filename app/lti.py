@@ -87,7 +87,17 @@ class FastAPICookieService(CookieService):
         self._cookie_data_to_set[self._get_key(name)] = {"value": value, "exp": exp}
 
     def update_response(self, response):
-        secure = False if config.LOCAL_HTTP_LTI else self._request.is_secure()
+        # Match the session-cookie policy in app/config.py: on plain-HTTP dev,
+        # Chromium rejects SameSite=None cookies that are not Secure, which drops
+        # the OIDC state/nonce cookies and breaks /launch ("State not found").
+        # Canvas and the tool share one host in local dev (same-site), so Lax is
+        # sent on the launch POST. HTTPS keeps None+Secure for cross-site iframe POST.
+        if config.LOCAL_HTTP_LTI:
+            secure = False
+            same_site = "lax"
+        else:
+            secure = self._request.is_secure()
+            same_site = "none"
         for key, cookie_data in self._cookie_data_to_set.items():
             response.set_cookie(
                 key=key,
@@ -96,7 +106,7 @@ class FastAPICookieService(CookieService):
                 secure=secure,
                 path="/",
                 httponly=True,
-                samesite="none",
+                samesite=same_site,
             )
 
 
@@ -304,7 +314,7 @@ class FastAPIOIDCLogin(OIDCLogin):
         return page.get_html()
 
     def _prepare_redirect_url(self, launch_url: str) -> str:
-        """OIDC redirect; HTTP dev uses prompt=login and canvas.docker-aligned URLs."""
+        """OIDC redirect; for local HTTP, force prompt=login to work around cookie policy differences."""
         from pylti1p3.exception import OIDCException
 
         launch_url = config.rewrite_tool_url(launch_url)

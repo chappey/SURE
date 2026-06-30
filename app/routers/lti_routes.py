@@ -61,7 +61,20 @@ async def lti_login(request: Request) -> RedirectResponse:
 
     if _should_run_cookie_probe(request):
         oidc_login.enable_check_cookies()
-    return oidc_login.redirect(target_link_uri)
+    try:
+        return oidc_login.redirect(target_link_uri)
+    except Exception as exc:
+        logger.exception("LTI OIDC login failed on /login: %s", exc)
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": "lti_login_invalid",
+                "detail": (
+                    "LTI login could not be started. Check config/lti_config.json "
+                    "matches your Canvas host and client_id."
+                ),
+            },
+        )
 
 
 @router.get("/launch")
@@ -73,7 +86,17 @@ async def lti_launch(request: Request) -> RedirectResponse:
             form_data = await request.form()
             lti_request = FastAPILTIRequest(request, tool_conf, request_data=form_data)
             launch_data = lti_request.get_launch_data()
+        except Exception as exc:
+            logger.exception("LTI validation failed on /launch: %s", exc)
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": "lti_launch_invalid",
+                    "detail": "LTI launch validation failed. Please relaunch EasyLearn from Canvas.",
+                },
+            )
 
+        try:
             request.session["lti_launched"] = True
             user_fields = extract_lti_user_fields(launch_data)
             if user_fields.get("user_name"):
@@ -102,6 +125,7 @@ async def lti_launch(request: Request) -> RedirectResponse:
             if context.get("title"):
                 request.session["course_name"] = context.get("title")
         except Exception as exc:
-            logger.exception("LTI validation failed on /launch: %s", exc)
+            # JWT already validated above; a claim-processing hiccup should not block launch.
+            logger.exception("Error processing validated LTI launch claims: %s", exc)
 
     return RedirectResponse(url=f"{config.EASYLEARN_PUBLIC_URL}/", status_code=303)

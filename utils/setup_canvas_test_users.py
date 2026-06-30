@@ -117,7 +117,7 @@ def publish_course(course_id: int) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create local Canvas test users")
-    parser.add_argument("--course-id", type=int, default=int(config.CANVAS_COURSE_ID or "3"))
+    parser.add_argument("--course-id", type=int, required=True, help="Target Canvas course id")
     parser.add_argument("--publish", action="store_true", help="Publish the target course")
     parser.add_argument("--password", default=DEFAULT_PASSWORD)
     args = parser.parse_args()
