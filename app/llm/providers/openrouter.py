@@ -84,3 +84,13 @@ def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str
         text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     json.loads(text)  # validate JSON early
     return text
+
+
+def generate_text(model: ModelEntry, prompt: str) -> str:
+    client = _client()
+    response = client.chat.completions.create(
+        model=model.model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.4,
+    )
+    return _extract_message_text(response)

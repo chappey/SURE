@@ -43,4 +43,40 @@ def parse_quiz_statistics(raw: dict[str, Any] | list[Any] | None) -> dict[str, A
         "score_high": submission_stats.get("score_high"),
         "score_low": submission_stats.get("score_low"),
         "score_stdev": submission_stats.get("score_stdev"),
+        "questions": _parse_question_statistics(entry.get("question_statistics")),
     }
+
+
+def _parse_question_statistics(raw: Any) -> list[dict[str, Any]]:
+    """Extract per-question correct rates from Canvas question_statistics."""
+    if not isinstance(raw, list):
+        return []
+
+    questions: list[dict[str, Any]] = []
+    for q in raw:
+        if not isinstance(q, dict):
+            continue
+        answers = q.get("answers") or []
+        correct = 0
+        total = q.get("responses")
+        answered = 0
+        for a in answers:
+            if not isinstance(a, dict):
+                continue
+            responses = int(a.get("responses") or 0)
+            answered += responses
+            if a.get("correct"):
+                correct += responses
+        if total is None:
+            total = answered
+        questions.append(
+            {
+                "id": q.get("id"),
+                "question_name": q.get("question_name") or "",
+                "question_text": q.get("question_text") or "",
+                "question_type": q.get("question_type") or "",
+                "responses": int(total or 0),
+                "correct_count": correct,
+            }
+        )
+    return questions

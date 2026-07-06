@@ -28,8 +28,15 @@ from app.quizzes_service import (
     build_quizzes_overview,
     get_quiz_feedback_summary,
     get_quiz_stats,
+    process_agentic_feedback,
 )
-from app.schemas import DeployQuizRequest, GenerateQuizRequest, ModelInfo, SwitchCourseRequest
+from app.schemas import (
+    DeployQuizRequest,
+    GenerateQuizRequest,
+    ModelInfo,
+    ProcessAgenticFeedbackRequest,
+    SwitchCourseRequest,
+)
 from app.storage import (
     get_cached_modules,
     get_quiz_draft,
@@ -243,6 +250,20 @@ def api_generate_quiz(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+        include_answer_feedback = body.include_answer_feedback and not body.include_agentic_feedback
+
+        # Map UI type keys to Canvas question_type strings for per-type point enforcement.
+        type_key_map = {
+            "multiple_choice": "multiple_choice_question",
+            "true_false": "true_false_question",
+            "matching": "matching_question",
+        }
+        points_by_type = {
+            canvas_type: int(body.points_per_type[ui_key])
+            for ui_key, canvas_type in type_key_map.items()
+            if body.points_per_type.get(ui_key)
+        }
+
         quiz, model_entry = generate_weekly_quiz(
             week_name=body.quiz_title,
             material_text=combined_text,
@@ -250,6 +271,10 @@ def api_generate_quiz(
             num_tf=num_tf,
             num_matching=num_matching,
             points_per_q=body.points_per_q,
+            points_by_type=points_by_type,
+            mc_options=body.mc_options,
+            matching_pairs=body.matching_pairs,
+            include_answer_feedback=include_answer_feedback,
             model_id=model_entry.id,
         )
         if body.quiz_title:
@@ -259,6 +284,8 @@ def api_generate_quiz(
         quiz.id = quiz_id
         quiz_dict = quiz.model_dump()
         quiz_dict["includes_feedback"] = body.include_feedback
+        quiz_dict["includes_answer_feedback"] = include_answer_feedback
+        quiz_dict["includes_agentic_feedback"] = body.include_agentic_feedback
         quiz_dict["module_id"] = body.module_id
         quiz_dict["model_id"] = model_entry.id
         quiz_dict["model_label"] = model_entry.label
@@ -303,17 +330,28 @@ def api_deploy_quiz(
             if body.include_feedback is not None
             else bool(getattr(body.quiz, "includes_feedback", False))
         )
+        include_agentic_feedback = (
+            body.include_agentic_feedback
+            if body.include_agentic_feedback is not None
+            else bool(getattr(body.quiz, "includes_agentic_feedback", False))
+        )
         if body.quiz.id:
             draft = get_quiz_draft(course_id, body.quiz.id)
-            if draft and body.include_feedback is None:
-                include_feedback = draft.get("includes_feedback", include_feedback)
+            if draft:
+                if body.include_feedback is None:
+                    include_feedback = draft.get("includes_feedback", include_feedback)
+                if body.include_agentic_feedback is None:
+                    include_agentic_feedback = draft.get(
+                        "includes_agentic_feedback", include_agentic_feedback
+                    )
 
         module = find_module_by_id_or_name(course, body.module_id)
-        deployed_quiz = deploy_quiz_to_canvas(
+        deployed_quiz, agentic_meta = deploy_quiz_to_canvas(
             course,
             body.module_id,
             body.quiz,
             include_feedback=include_feedback,
+            include_agentic_feedback=include_agentic_feedback,
         )
 
         quiz_url = config.canvas_quiz_url(course_id, deployed_quiz.id)
@@ -327,6 +365,8 @@ def api_deploy_quiz(
             quiz_dict["module_id"] = module.id
             quiz_dict["module_name"] = module.name
             quiz_dict["includes_feedback"] = include_feedback
+            quiz_dict["includes_agentic_feedback"] = include_agentic_feedback
+            quiz_dict["agentic_feedback"] = agentic_meta
             save_quiz_draft(
                 course_id=course_id,
                 quiz_id=body.quiz.id,
@@ -339,6 +379,7 @@ def api_deploy_quiz(
             "quiz_id": deployed_quiz.id,
             "quiz_url": quiz_url,
             "includes_feedback": include_feedback,
+            "includes_agentic_feedback": include_agentic_feedback,
         }
     except HTTPException:
         raise
@@ -439,7 +480,7 @@ def get_quiz_feedback_endpoint(
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
 ) -> dict:
-    """Aggregate student feedback Likert responses from Canvas."""
+    """Aggregate student survey Likert responses from Canvas."""
     draft = get_quiz_draft(course_id, quiz_id)
     if not draft:
         raise HTTPException(status_code=404, detail="Quiz draft not found.")
@@ -454,7 +495,51 @@ def get_quiz_feedback_endpoint(
         raise
     except Exception as exc:
         logger.exception("Error in GET /api/quizzes/%s/feedback", quiz_id)
-        raise HTTPException(status_code=500, detail="Failed to fetch quiz feedback.") from exc
+        raise HTTPException(status_code=500, detail="Failed to fetch quiz survey.") from exc
+
+
+@router.post("/quizzes/{quiz_id}/agentic-feedback/process")
+def process_agentic_feedback_endpoint(
+    course_id: CourseIdDep,
+    canvas: CanvasClientDep,
+    quiz_id: str,
+    request: Request,
+    body: ProcessAgenticFeedbackRequest,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> dict:
+    """Generate personalized feedback comments for completed quiz submissions."""
+    draft = get_quiz_draft(course_id, quiz_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Quiz draft not found.")
+
+    try:
+        course = canvas.get_course(course_id)
+        result = process_agentic_feedback(
+            course,
+            course_id,
+            draft,
+            force=body.force,
+        )
+        update_quiz_draft(
+            course_id=course_id,
+            quiz_id=quiz_id,
+            patch={
+                "agentic_feedback_processed": result.pop("agentic_feedback_processed"),
+                "agentic_feedback_last_run": result.pop("agentic_feedback_last_run"),
+            },
+            created_by=request.session.get("user_name", "Instructor"),
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error in POST /api/quizzes/%s/agentic-feedback/process", quiz_id)
+        raise HTTPException(
+            status_code=500, detail="Failed to process agentic feedback."
+        ) from exc
 
 
 @router.post("/quizzes/{quiz_id}/publish")

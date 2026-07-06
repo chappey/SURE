@@ -141,6 +141,7 @@ def list_quizzes(course_id: str | int) -> list[dict[str, Any]]:
                     "module_id": data.get("module_id"),
                     "module_name": data.get("module_name"),
                     "includes_feedback": data.get("includes_feedback", False),
+                    "includes_agentic_feedback": data.get("includes_agentic_feedback", False),
                 }
             )
         except (json.JSONDecodeError, OSError) as exc:
