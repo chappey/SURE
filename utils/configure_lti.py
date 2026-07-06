@@ -56,12 +56,13 @@ def _api(method: str, path: str, data: dict | None = None) -> dict:
         raise SystemExit(f"Canvas API error {exc.code}: {exc.read().decode()}") from exc
 
 
-def _set_new_tab(cfg: dict, launch_url: str | None) -> bool:
-    """Set course_navigation to open in a new tab. Returns True if a placement matched."""
+def _configure_course_navigation(cfg: dict, launch_url: str | None) -> bool:
+    """Set course_navigation placement defaults. Returns True if a placement matched."""
     updated = False
     for placement in cfg.get("placements", []):
         if placement.get("placement") == "course_navigation":
             placement["windowTarget"] = "_blank"
+            placement["visibility"] = "admins"
             if launch_url:
                 placement["target_link_uri"] = launch_url
             updated = True
@@ -91,7 +92,7 @@ def main() -> int:
 
     if args.new_tab_only:
         comment = "Open EasyLearn in a new tab for cross-origin cookie compatibility"
-        if not _set_new_tab(cfg, launch_url=None):
+        if not _configure_course_navigation(cfg, launch_url=None):
             raise SystemExit("No course_navigation placement found on registration")
     else:
         comment = "Local dev: sync tool URLs to EASYLEARN_PUBLIC_URL + new-tab launch"
@@ -101,7 +102,7 @@ def main() -> int:
         cfg["oidc_initiation_url"] = f"{tool_base}/login"
         cfg["public_jwk_url"] = f"{tool_base}/jwks"
         cfg["redirect_uris"] = [launch_url]
-        _set_new_tab(cfg, launch_url=launch_url)
+        _configure_course_navigation(cfg, launch_url=launch_url)
 
     result = _api(
         "PUT",
@@ -123,6 +124,7 @@ def main() -> int:
     for placement in out.get("placements", []):
         if placement.get("placement") == "course_navigation":
             print(f"windowTarget:  {placement.get('windowTarget')!r}")
+            print(f"visibility:    {placement.get('visibility')!r}")
     print()
     print(f"Canvas (browser): {config.CANVAS_PUBLIC_URL}")
     print(f"EasyLearn:        {config.EASYLEARN_PUBLIC_URL}")
