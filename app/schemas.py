@@ -25,10 +25,23 @@ class GeneratedQuestion(BaseModel):
     question_name: str
     question_text: str
     question_type: Literal[
-        "multiple_choice_question", "true_false_question", "matching_question"
+        "multiple_choice_question",
+        "true_false_question",
+        "matching_question",
+        "essay_question",
     ]
     points_possible: int = 1
     answers: list[GeneratedAnswer]
+    feedback_enabled: bool = Field(
+        True,
+        description="Whether AI feedback (confidence + explanation) is collected for this question",
+    )
+    correct_comments: str = Field(
+        "", description="Short explanation shown to students who answer correctly"
+    )
+    incorrect_comments: str = Field(
+        "", description="Short explanation shown to students who answer incorrectly"
+    )
 
 
 class WeeklyQuiz(BaseModel):
@@ -42,8 +55,13 @@ class GenerateQuizRequest(BaseModel):
     quiz_title: str
     file_ids: list[int]
     question_types: dict[str, int]
+    points_per_type: dict[str, int] = Field(default_factory=dict)
     points_per_q: int = 1
+    mc_options: int = 4
+    matching_pairs: int = 4
     include_feedback: bool = True
+    include_answer_feedback: bool = False
+    include_agentic_feedback: bool = False
     model_id: str | None = None
 
 
@@ -60,6 +78,11 @@ class DeployQuizRequest(BaseModel):
     module_id: str | int
     quiz: WeeklyQuiz
     include_feedback: bool | None = None
+    include_agentic_feedback: bool | None = None
+
+
+class ProcessAgenticFeedbackRequest(BaseModel):
+    force: bool = False
 
 
 class SwitchCourseRequest(BaseModel):
@@ -92,6 +115,9 @@ class DemoCourse(BaseModel):
 def validate_questions(quiz: WeeklyQuiz) -> None:
     """Ensure each question matches its type requirements."""
     for i, q in enumerate(quiz.questions, start=1):
+        if q.question_type == "essay_question":
+            continue
+
         if q.question_type == "matching_question":
             if not q.answers:
                 raise ValueError(
@@ -129,7 +155,15 @@ def to_canvas_question(q: GeneratedQuestion) -> dict:
         "question_type": q.question_type,
         "points_possible": q.points_possible,
     }
-    
+
+    if q.correct_comments:
+        payload["correct_comments_html"] = q.correct_comments
+    if q.incorrect_comments and q.question_type != "matching_question":
+        payload["incorrect_comments_html"] = q.incorrect_comments
+
+    if q.question_type == "essay_question":
+        return payload
+
     if q.question_type == "matching_question":
         payload["answers"] = [
             {

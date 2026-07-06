@@ -1,4 +1,4 @@
-"""Dispatch structured JSON generation to the configured provider."""
+"""Dispatch LLM generation to the configured provider."""
 
 from __future__ import annotations
 
@@ -14,4 +14,13 @@ def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str
         return gemini.generate_json(model, prompt, schema)
     if provider == "openrouter":
         return openrouter.generate_json(model, prompt, schema)
+    raise ValueError(f"Unsupported provider: {provider}")
+
+
+def generate_text(model: ModelEntry, prompt: str) -> str:
+    provider: ProviderName = model.provider
+    if provider == "gemini":
+        return gemini.generate_text(model, prompt)
+    if provider == "openrouter":
+        return openrouter.generate_text(model, prompt)
     raise ValueError(f"Unsupported provider: {provider}")

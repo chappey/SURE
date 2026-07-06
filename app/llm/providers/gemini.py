@@ -30,3 +30,20 @@ def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str
     if not text:
         raise RuntimeError("Gemini returned empty response")
     return text
+
+
+def generate_text(model: ModelEntry, prompt: str) -> str:
+    api_key = config.GEMINI_API_KEY.strip()
+    if not api_key:
+        raise RuntimeError("Set GEMINI_API_KEY in .env (https://aistudio.google.com/apikey)")
+
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=model.model,
+        contents=prompt,
+        config=types.GenerateContentConfig(temperature=0.4),
+    )
+    text = response.text
+    if not text:
+        raise RuntimeError("Gemini returned empty response")
+    return text

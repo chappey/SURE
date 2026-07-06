@@ -1,4 +1,4 @@
-"""End-of-quiz student feedback questions (Canvas-native Likert MC)."""
+"""End-of-quiz student survey questions (Canvas-native Likert MC)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ LIKERT_LABELS = [
 
 
 def build_feedback_questions() -> list[GeneratedQuestion]:
-    """Standard ungraded Likert feedback questions appended at deploy time."""
+    """Standard ungraded Likert survey questions appended at deploy time."""
     prompts = [
         ("Clarity", "How clear were the quiz questions?"),
         ("Difficulty", "How appropriate was the difficulty level for this week's material?"),
@@ -33,8 +33,10 @@ def build_feedback_questions() -> list[GeneratedQuestion]:
                 question_text=f"<p>{text}</p>",
                 question_type="multiple_choice_question",
                 points_possible=0,
+                # Weight 100 on every option: any choice is "correct" (0 pts),
+                # so Canvas never shows a red X on an opinion question.
                 answers=[
-                    GeneratedAnswer(answer_text=label, answer_weight=0)
+                    GeneratedAnswer(answer_text=label, answer_weight=100)
                     for label in LIKERT_LABELS
                 ],
             )
