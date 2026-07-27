@@ -24,7 +24,10 @@ Guide for humans and AI agents working in this repository.
 | `cache/` | Downloaded files and quiz drafts (gitignored) |
 | `templates/` | Dashboard HTML templates |
 | `static/` | Static CSS/JS assets and logo |
+| `app/agentic_feedback.py` | Batched LLM feedback generation for quiz submissions |
+| `app/quizzes_service.py` | Quiz overview, Canvas stats sync, feedback processing |
 | `utils/` | System configuration tools (`configure_lti.py`, `configure_oauth.py`) |
+| `tests/` | Pytest suite (Tier-1 unit tests, 129 tests across 4 modules) |
 | `docs/` | DevOps Deployment Guide (`deployment.md`) |
 
 ## Dev workflow
@@ -33,15 +36,18 @@ Guide for humans and AI agents working in this repository.
 cp .env.example .env
 cp config/lti_config.example.json config/lti_config.json
 uv sync
-uv run utils/configure_oauth.py --write-env
+uv run --no-sync utils/configure_oauth.py --write-env
 docker compose up -d --build
 ```
 
-Bare-metal: `uv run main.py` after the same `.env` setup.
+Bare-metal: `uv run --no-sync main.py` after the same `.env` setup.
+
+Run tests: `uv run --no-sync pytest` (129 Tier-1 tests, no external services needed)
 
 - Python >= 3.14, dependencies via **`uv`** only.
 - Never commit `.env`, `keys/*.key`, or `cache/` contents.
 - `CANVAS_API_TOKEN` is CLI-only; the web app uses LTI + per-professor OAuth.
+- **Always use `uv run --no-sync`** for all Python commands. Never call `python3` or `.venv/bin/python` directly. The `--no-sync` flag uses the existing venv without triggering costly full re-syncs.
 
 ## Agent guardrails
 
@@ -51,7 +57,7 @@ Bare-metal: `uv run main.py` after the same `.env` setup.
 - Do not log tokens, OAuth codes, or extracted course text.
 - Do not disable LTI/OAuth validation or CSRF checks.
 - Do not commit secrets — grep diffs before merge.
-- Always run static syntax checks after JS changes (`node -c static/js/*.js`) and Python edits (`uv run python -m py_compile ...`) before claiming task completion.
+- Always run static syntax checks after JS changes (`node -c static/js/*.js`) and Python edits (`uv run --no-sync python -m py_compile ...`) before claiming task completion.
 
 ## LTI endpoints (do not rename casually)
 
