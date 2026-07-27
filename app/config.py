@@ -168,6 +168,9 @@ CACHE_DIR = PROJECT_ROOT / "cache"
 CREDS_DIR = CACHE_DIR / "credentials"
 LTI_CONFIG_PATH = PROJECT_ROOT / "config" / "lti_config.json"
 
+# Timeout for individual LLM provider API calls (seconds).
+LLM_TIMEOUT_SECONDS = 300
+
 # Backward-compatible module-level exports (used across app/ and utils/)
 CANVAS_API_URL = settings.CANVAS_API_URL
 CANVAS_API_TOKEN = settings.CANVAS_API_TOKEN

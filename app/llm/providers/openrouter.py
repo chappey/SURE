@@ -56,6 +56,7 @@ def _client() -> OpenAI:
         base_url=OPENROUTER_BASE_URL,
         api_key=api_key,
         default_headers=default_headers or None,
+        timeout=config.LLM_TIMEOUT_SECONDS,
     )
 
 

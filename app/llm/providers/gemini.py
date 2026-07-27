@@ -20,7 +20,10 @@ def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str
         raise RuntimeError("Set GEMINI_API_KEY in .env (https://aistudio.google.com/apikey)")
 
     logger.info("Gemini requesting: model=%s", model.model)
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=config.LLM_TIMEOUT_SECONDS * 1000),
+    )
     response = client.models.generate_content(
         model=model.model,
         contents=prompt,
@@ -42,7 +45,10 @@ def generate_text(model: ModelEntry, prompt: str) -> str:
         raise RuntimeError("Set GEMINI_API_KEY in .env (https://aistudio.google.com/apikey)")
 
     logger.info("Gemini requesting: model=%s", model.model)
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=config.LLM_TIMEOUT_SECONDS * 1000),
+    )
     response = client.models.generate_content(
         model=model.model,
         contents=prompt,

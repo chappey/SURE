@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from google.genai import errors as genai_errors
@@ -82,21 +83,15 @@ def get_course_info(
     __: RequireTeacherDep,
 ) -> dict:
     """Retrieve details for the current active course."""
-    try:
-        course = canvas.get_course(course_id)
-        course_code = getattr(course, "course_code", "") or getattr(course, "sis_course_id", "")
-        return {
-            "id": course.id,
-            "name": course.name,
-            "course_code": course_code,
-            "user_name": request.session.get("user_name", "Instructor"),
-            "course_id": course_id,
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("course %s: failed to fetch course info: %s", course_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to fetch course info.") from exc
+    course = canvas.get_course(course_id)
+    course_code = getattr(course, "course_code", "") or getattr(course, "sis_course_id", "")
+    return {
+        "id": course.id,
+        "name": course.name,
+        "course_code": course_code,
+        "user_name": request.session.get("user_name", "Instructor"),
+        "course_id": course_id,
+    }
 
 
 @router.get("/courses")
@@ -107,13 +102,9 @@ def get_courses(
     __: RequireTeacherDep,
 ) -> list:
     """List courses where the current user is a teacher."""
-    try:
-        active_id = request.session.get("canvas_course_id")
-        include_id = int(active_id) if active_id else None
-        return list_teacher_courses(canvas, include_course_id=include_id)
-    except Exception as exc:
-        logger.warning("failed to list courses: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to list courses.") from exc
+    active_id = request.session.get("canvas_course_id")
+    include_id = int(active_id) if active_id else None
+    return list_teacher_courses(canvas, include_course_id=include_id)
 
 
 @router.post("/courses/switch")
@@ -196,38 +187,32 @@ def get_modules(
             logger.info("Serving modules for course %s from disk cache.", course_id)
             return _filter_modules_with_supported_materials(cached_data)
 
+    logger.info(
+        "Fetching modules from Canvas for course %s (%s).",
+        course_id,
+        "forced refresh" if refresh else "cache miss",
+    )
+    course = canvas.get_course(course_id)
+    file_map: dict[int, str] = {}
     try:
-        logger.info(
-            "Fetching modules from Canvas for course %s (%s).",
-            course_id,
-            "forced refresh" if refresh else "cache miss",
-        )
-        course = canvas.get_course(course_id)
-        file_map: dict[int, str] = {}
-        try:
-            for file_obj in course.get_files():
-                file_map[file_obj.id] = _format_file_size(getattr(file_obj, "size", 0))
-        except Exception as exc:
-            logger.warning("Error fetching course files list: %s", exc)
-
-        modules_data = []
-        for module in course.get_modules(include=["items"]):
-            # Canvas may omit inline items when a module is large — fall back per module.
-            if getattr(module, "items", None) is None:
-                logger.debug(
-                    "Module %s missing inline items; fetching module items separately.",
-                    getattr(module, "id", "?"),
-                )
-            items_data = _module_file_items(module, file_map)
-            modules_data.append({"id": module.id, "name": module.name, "items": items_data})
-
-        save_course_modules(course_id, modules_data)
-        return _filter_modules_with_supported_materials(modules_data)
-    except HTTPException:
-        raise
+        for file_obj in course.get_files():
+            file_map[file_obj.id] = _format_file_size(getattr(file_obj, "size", 0))
     except Exception as exc:
-        logger.warning("course %s: failed to fetch modules: %s", course_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to fetch course modules.") from exc
+        logger.warning("Error fetching course files list: %s", exc)
+
+    modules_data = []
+    for module in course.get_modules(include=["items"]):
+        # Canvas may omit inline items when a module is large — fall back per module.
+        if getattr(module, "items", None) is None:
+            logger.debug(
+                "Module %s missing inline items; fetching module items separately.",
+                getattr(module, "id", "?"),
+            )
+        items_data = _module_file_items(module, file_map)
+        modules_data.append({"id": module.id, "name": module.name, "items": items_data})
+
+    save_course_modules(course_id, modules_data)
+    return _filter_modules_with_supported_materials(modules_data)
 
 
 @router.post("/generate-quiz")
@@ -363,59 +348,53 @@ def api_deploy_quiz(
     __: RequireTeacherDep,
 ) -> dict:
     """Deploy a generated quiz to Canvas."""
-    try:
-        course = canvas.get_course(course_id)
-        include_agentic_feedback = (
-            body.include_agentic_feedback
-            if body.include_agentic_feedback is not None
-            else bool(getattr(body.quiz, "includes_agentic_feedback", False))
+    course = canvas.get_course(course_id)
+    include_agentic_feedback = (
+        body.include_agentic_feedback
+        if body.include_agentic_feedback is not None
+        else bool(getattr(body.quiz, "includes_agentic_feedback", False))
+    )
+    if body.quiz.id:
+        draft = get_quiz_draft(course_id, body.quiz.id)
+        if draft:
+            if body.include_agentic_feedback is None:
+                include_agentic_feedback = draft.get(
+                    "includes_agentic_feedback", include_agentic_feedback
+                )
+
+    module = find_module_by_id_or_name(course, body.module_id)
+    deployed_quiz, agentic_meta = deploy_quiz_to_canvas(
+        course,
+        body.module_id,
+        body.quiz,
+        include_agentic_feedback=include_agentic_feedback,
+    )
+
+    quiz_url = config.canvas_quiz_url(course_id, deployed_quiz.id)
+
+    if body.quiz.id:
+        quiz_dict = body.quiz.model_dump()
+        quiz_dict["deployed"] = True
+        quiz_dict["published"] = False
+        quiz_dict["canvas_quiz_id"] = deployed_quiz.id
+        quiz_dict["quiz_id"] = deployed_quiz.id
+        quiz_dict["module_id"] = module.id
+        quiz_dict["module_name"] = module.name
+        quiz_dict["includes_agentic_feedback"] = include_agentic_feedback
+        quiz_dict["agentic_feedback"] = agentic_meta
+        save_quiz_draft(
+            course_id=course_id,
+            quiz_id=body.quiz.id,
+            quiz_data=quiz_dict,
+            created_by=request.session.get("user_name", "Instructor"),
         )
-        if body.quiz.id:
-            draft = get_quiz_draft(course_id, body.quiz.id)
-            if draft:
-                if body.include_agentic_feedback is None:
-                    include_agentic_feedback = draft.get(
-                        "includes_agentic_feedback", include_agentic_feedback
-                    )
 
-        module = find_module_by_id_or_name(course, body.module_id)
-        deployed_quiz, agentic_meta = deploy_quiz_to_canvas(
-            course,
-            body.module_id,
-            body.quiz,
-            include_agentic_feedback=include_agentic_feedback,
-        )
-
-        quiz_url = config.canvas_quiz_url(course_id, deployed_quiz.id)
-
-        if body.quiz.id:
-            quiz_dict = body.quiz.model_dump()
-            quiz_dict["deployed"] = True
-            quiz_dict["published"] = False
-            quiz_dict["canvas_quiz_id"] = deployed_quiz.id
-            quiz_dict["quiz_id"] = deployed_quiz.id
-            quiz_dict["module_id"] = module.id
-            quiz_dict["module_name"] = module.name
-            quiz_dict["includes_agentic_feedback"] = include_agentic_feedback
-            quiz_dict["agentic_feedback"] = agentic_meta
-            save_quiz_draft(
-                course_id=course_id,
-                quiz_id=body.quiz.id,
-                quiz_data=quiz_dict,
-                created_by=request.session.get("user_name", "Instructor"),
-            )
-
-        return {
-            "status": "success",
-            "quiz_id": deployed_quiz.id,
-            "quiz_url": quiz_url,
-            "includes_agentic_feedback": include_agentic_feedback,
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("course %s: quiz deployment failed: %s", course_id, exc)
-        raise HTTPException(status_code=500, detail="Quiz deployment failed.") from exc
+    return {
+        "status": "success",
+        "quiz_id": deployed_quiz.id,
+        "quiz_url": quiz_url,
+        "includes_agentic_feedback": include_agentic_feedback,
+    }
 
 
 @router.get("/quizzes")
@@ -425,11 +404,7 @@ def get_quizzes(
     __: RequireTeacherDep,
 ) -> list:
     """List saved quiz drafts for the active course."""
-    try:
-        return list_quizzes(course_id)
-    except Exception as exc:
-        logger.warning("course %s: failed to list quiz drafts: %s", course_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to list quiz drafts.") from exc
+    return list_quizzes(course_id)
 
 
 @router.get("/quizzes/overview")
@@ -441,14 +416,8 @@ def get_quizzes_overview(
     status: str | None = Query(default=None, pattern="^(draft|deployed|published)$"),
 ) -> list:
     """List quizzes with Canvas publish status synced."""
-    try:
-        course = canvas.get_course(course_id)
-        return build_quizzes_overview(course, canvas, course_id, status_filter=status)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("course %s: failed to load quiz overview: %s", course_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to load quiz overview.") from exc
+    course = canvas.get_course(course_id)
+    return build_quizzes_overview(course, canvas, course_id, status_filter=status)
 
 
 @router.get("/quizzes/{quiz_id}")
@@ -459,21 +428,15 @@ def get_quiz_by_id(
     __: RequireTeacherDep,
 ) -> dict:
     """Retrieve a specific saved quiz draft."""
-    try:
-        quiz = get_quiz_draft(course_id, quiz_id)
-        if not quiz:
-            raise HTTPException(status_code=404, detail="Quiz draft not found.")
-        canvas_quiz_id = quiz.get("canvas_quiz_id") or quiz.get("quiz_id")
-        if canvas_quiz_id:
-            quiz["quiz_url"] = config.canvas_quiz_url(course_id, canvas_quiz_id)
-        else:
-            quiz.pop("quiz_url", None)
-        return quiz
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("course %s quiz %s: failed to load draft: %s", course_id, quiz_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to load quiz draft.") from exc
+    quiz = get_quiz_draft(course_id, quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz draft not found.")
+    canvas_quiz_id = quiz.get("canvas_quiz_id") or quiz.get("quiz_id")
+    if canvas_quiz_id:
+        quiz["quiz_url"] = config.canvas_quiz_url(course_id, canvas_quiz_id)
+    else:
+        quiz.pop("quiz_url", None)
+    return quiz
 
 
 @router.get("/quizzes/{quiz_id}/stats")
@@ -492,14 +455,8 @@ def get_quiz_stats_endpoint(
     if not canvas_quiz_id:
         raise HTTPException(status_code=400, detail="Quiz has not been deployed to Canvas.")
 
-    try:
-        course = canvas.get_course(course_id)
-        return get_quiz_stats(course, canvas, course_id, int(canvas_quiz_id))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("course %s quiz %s: failed to fetch stats: %s", course_id, quiz_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to fetch quiz statistics.") from exc
+    course = canvas.get_course(course_id)
+    return get_quiz_stats(course, canvas, course_id, int(canvas_quiz_id))
 
 
 @router.post("/quizzes/{quiz_id}/agentic-feedback/process")
@@ -517,8 +474,8 @@ def process_agentic_feedback_endpoint(
     if not draft:
         raise HTTPException(status_code=404, detail="Quiz draft not found.")
 
+    course = canvas.get_course(course_id)
     try:
-        course = canvas.get_course(course_id)
         result = process_agentic_feedback(
             course,
             course_id,
@@ -526,26 +483,19 @@ def process_agentic_feedback_endpoint(
             force=body.force,
             draft_quiz_id=quiz_id,
         )
-        # Final persist (checkpoints may have already written progress)
-        update_quiz_draft(
-            course_id=course_id,
-            quiz_id=quiz_id,
-            patch={
-                "agentic_feedback_processed": result.pop("agentic_feedback_processed"),
-                "agentic_feedback_last_run": result.pop("agentic_feedback_last_run"),
-            },
-            created_by=request.session.get("user_name", "Instructor"),
-        )
-        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("course %s quiz %s: agentic feedback processing failed: %s", course_id, quiz_id, exc)
-        raise HTTPException(
-            status_code=500, detail="Failed to process agentic feedback."
-        ) from exc
+    # Final persist (checkpoints may have already written progress)
+    update_quiz_draft(
+        course_id=course_id,
+        quiz_id=quiz_id,
+        patch={
+            "agentic_feedback_processed": result.pop("agentic_feedback_processed"),
+            "agentic_feedback_last_run": result.pop("agentic_feedback_last_run"),
+        },
+        created_by=request.session.get("user_name", "Instructor"),
+    )
+    return result
 
 
 @router.post("/quizzes/{quiz_id}/undeploy")
@@ -592,61 +542,55 @@ def preview_agentic_feedback_endpoint(
     if not canvas_quiz_id:
         raise HTTPException(status_code=400, detail="Quiz has not been deployed to Canvas.")
 
-    try:
-        course = canvas.get_course(course_id)
-        submissions = fetch_quiz_submissions_with_answers(course, int(canvas_quiz_id))
-        content_questions = draft.get("questions") or []
-        mapping = (draft.get("agentic_feedback") or {}).get("questions") or []
+    course = canvas.get_course(course_id)
+    submissions = fetch_quiz_submissions_with_answers(course, int(canvas_quiz_id))
+    content_questions = draft.get("questions") or []
+    mapping = (draft.get("agentic_feedback") or {}).get("questions") or []
 
-        parsed_subs = []
-        for sub in submissions:
-            sub_id = sub.get("id")
-            user_id = sub.get("user_id")
-            sub_data = sub.get("submission_data") or []
-            
-            payload = {}
-            if sub_data and mapping:
-                try:
-                    payload = build_submission_question_payload(
-                        sub_data, mapping, content_questions, model_id=draft.get("model_id")
-                    )
-                except Exception as p_exc:
-                    logger.warning("Error building payload for sub %s: %s", sub_id, p_exc)
+    parsed_subs = []
+    for sub in submissions:
+        sub_id = sub.get("id")
+        user_id = sub.get("user_id")
+        sub_data = sub.get("submission_data") or []
+        
+        payload = {}
+        if sub_data and mapping:
+            try:
+                payload = build_submission_question_payload(
+                    sub_data, mapping, content_questions, model_id=draft.get("model_id")
+                )
+            except Exception as p_exc:
+                logger.warning("Error building payload for sub %s: %s", sub_id, p_exc)
 
-            q_list = []
-            for q_idx, q_item in enumerate(content_questions):
-                entry = payload.get(q_idx, {})
-                q_list.append({
-                    "q_index": q_idx,
-                    "question_id": q_item.get("id", q_idx),
-                    "question_text": q_item.get("question_text", f"Question {q_idx + 1}"),
-                    "student_answer": entry.get("student_answer", "Answer recorded"),
-                    "confidence": entry.get("confidence", "Normal"),
-                    "explanation": entry.get("explanation", ""),
-                    "score": entry.get("score", 1),
-                    "ai_feedback": entry.get("comment", "Great work on this topic!")
-                })
-
-            parsed_subs.append({
-                "submission_id": sub_id,
-                "user_id": user_id,
-                "user_name": f"Student #{user_id}",
-                "score": sub.get("score"),
-                "questions": q_list
+        q_list = []
+        for q_idx, q_item in enumerate(content_questions):
+            entry = payload.get(q_idx, {})
+            q_list.append({
+                "q_index": q_idx,
+                "question_id": q_item.get("id", q_idx),
+                "question_text": q_item.get("question_text", f"Question {q_idx + 1}"),
+                "student_answer": entry.get("student_answer", ""),
+                "confidence": entry.get("confidence", "Normal"),
+                "explanation": entry.get("explanation", ""),
+                "score": entry.get("score", 1),
+                "ai_feedback": entry.get("comment", "Great work on this topic!")
             })
 
-        return {
-            "quiz_id": quiz_id,
-            "quiz_title": draft.get("quiz_title", "Quiz Feedback Review"),
-            "canvas_quiz_id": int(canvas_quiz_id),
-            "questions": content_questions,
-            "submissions": parsed_subs
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("course %s quiz %s: feedback preview failed: %s", course_id, quiz_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to load feedback preview.") from exc
+        parsed_subs.append({
+            "submission_id": sub_id,
+            "user_id": user_id,
+            "user_name": f"Student #{user_id}",
+            "score": sub.get("score"),
+            "questions": q_list
+        })
+
+    return {
+        "quiz_id": quiz_id,
+        "quiz_title": draft.get("quiz_title", "Quiz Feedback Review"),
+        "canvas_quiz_id": int(canvas_quiz_id),
+        "questions": content_questions,
+        "submissions": parsed_subs
+    }
 
 
 class ApproveFeedbackRequest(BaseModel):
@@ -672,42 +616,36 @@ def approve_agentic_feedback_endpoint(
     if not canvas_quiz_id:
         raise HTTPException(status_code=400, detail="Quiz has not been deployed to Canvas.")
 
-    try:
-        course = canvas.get_course(course_id)
-        approved_subs = body.submissions or []
-        count = 0
+    course = canvas.get_course(course_id)
+    approved_subs = body.submissions or []
+    count = 0
 
-        for item in approved_subs:
-            sub_id = item.get("submission_id")
-            comments = item.get("comments") or {}
-            if sub_id and comments:
-                payload = {
-                    int(k) if str(k).isdigit() else k: {"comment": str(v)}
-                    for k, v in comments.items()
-                }
-                update_quiz_submission_comments(
-                    course,
-                    int(canvas_quiz_id),
-                    int(sub_id),
-                    attempt=1,
-                    question_payload=payload
-                )
-                count += 1
+    for item in approved_subs:
+        sub_id = item.get("submission_id")
+        comments = item.get("comments") or {}
+        if sub_id and comments:
+            payload = {
+                int(k) if str(k).isdigit() else k: {"comment": str(v)}
+                for k, v in comments.items()
+            }
+            update_quiz_submission_comments(
+                course,
+                int(canvas_quiz_id),
+                int(sub_id),
+                attempt=1,
+                question_payload=payload
+            )
+            count += 1
 
-        update_quiz_draft(
-            course_id=course_id,
-            quiz_id=quiz_id,
-            patch={
-                "agentic_feedback_last_run": time.time(),
-            },
-            created_by=request.session.get("user_name", "Instructor"),
-        )
-        return {"status": "success", "pushed_submissions": count}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("course %s quiz %s: approve feedback failed: %s", course_id, quiz_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to push approved feedback.") from exc
+    update_quiz_draft(
+        course_id=course_id,
+        quiz_id=quiz_id,
+        patch={
+            "agentic_feedback_last_run": time.time(),
+        },
+        created_by=request.session.get("user_name", "Instructor"),
+    )
+    return {"status": "success", "pushed_submissions": count}
 
 
 @router.post("/quizzes/{quiz_id}/publish")
@@ -727,20 +665,14 @@ def publish_quiz_endpoint(
     if not canvas_quiz_id:
         raise HTTPException(status_code=400, detail="Quiz has not been deployed to Canvas.")
 
-    try:
-        course = canvas.get_course(course_id)
-        publish_canvas_quiz(course, int(canvas_quiz_id))
+    course = canvas.get_course(course_id)
+    publish_canvas_quiz(course, int(canvas_quiz_id))
 
-        update_quiz_draft(
-            course_id=course_id,
-            quiz_id=quiz_id,
-            patch={"published": True},
-            created_by=request.session.get("user_name", "Instructor"),
-        )
-        return {"status": "success", "published": True, "canvas_quiz_id": int(canvas_quiz_id)}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("course %s quiz %s: publish failed: %s", course_id, quiz_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to publish quiz.") from exc
+    update_quiz_draft(
+        course_id=course_id,
+        quiz_id=quiz_id,
+        patch={"published": True},
+        created_by=request.session.get("user_name", "Instructor"),
+    )
+    return {"status": "success", "published": True, "canvas_quiz_id": int(canvas_quiz_id)}
 

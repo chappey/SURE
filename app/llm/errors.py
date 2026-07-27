@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from google.genai import errors as genai_errors
+
+logger = logging.getLogger(__name__)
 
 from app.llm.catalog import ModelEntry
 from app.llm.fallback import AllModelsFailedError
@@ -21,25 +25,20 @@ def format_llm_error(exc: Exception, model: ModelEntry | None = None) -> tuple[i
                 api_message = response_json.get("error", {}).get("message")
 
         if code == 503:
-            return (
-                503,
-                prefix
-                + (
-                    api_message
-                    or "Google Gemini is temporarily unavailable due to high demand. Try another model from the dropdown."
-                ),
-            )
+            if api_message:
+                logger.warning("Gemini api_message: %s", api_message)
+            return 503, prefix + "Google Gemini is temporarily unavailable due to high demand. Try another model from the dropdown."
         if code == 429:
             return 429, prefix + "Rate limit reached. Wait a moment or switch models."
         if code in (401, 403):
             return 502, prefix + "API key rejected. Check GEMINI_API_KEY in .env."
         if 500 <= code < 600:
-            return (
-                502,
-                prefix
-                + (api_message or f"Provider unavailable (HTTP {code}). Try another model."),
-            )
-        return 400, prefix + (api_message or f"Request rejected (HTTP {code}).")
+            if api_message:
+                logger.warning("Gemini api_message: %s", api_message)
+            return 502, prefix + f"Provider unavailable (HTTP {code}). Try another model."
+        if api_message:
+            logger.warning("Gemini api_message: %s", api_message)
+        return 400, prefix + f"Request rejected (HTTP {code})."
 
     # OpenAI SDK (OpenRouter)
     try:
@@ -55,24 +54,20 @@ def format_llm_error(exc: Exception, model: ModelEntry | None = None) -> tuple[i
                 except Exception:
                     pass
             if code == 503:
-                return (
-                    503,
-                    prefix
-                    + (
-                        api_message
-                        or "OpenRouter model is temporarily unavailable. Try another model."
-                    ),
-                )
+                if api_message:
+                    logger.warning("OpenRouter api_message: %s", api_message)
+                return 503, prefix + "OpenRouter model is temporarily unavailable. Try another model."
             if code == 429:
                 return 429, prefix + "OpenRouter rate limit reached. Try again or switch models."
             if code in (401, 403):
                 return 502, prefix + "OpenRouter API key rejected. Check OPENROUTER_API_KEY in .env."
             if 500 <= code < 600:
-                return (
-                    502,
-                    prefix + (api_message or f"OpenRouter unavailable (HTTP {code})."),
-                )
-            return 400, prefix + (api_message or f"OpenRouter rejected the request (HTTP {code}).")
+                if api_message:
+                    logger.warning("OpenRouter api_message: %s", api_message)
+                return 502, prefix + f"OpenRouter unavailable (HTTP {code})."
+            if api_message:
+                logger.warning("OpenRouter api_message: %s", api_message)
+            return 400, prefix + f"OpenRouter rejected the request (HTTP {code})."
     except ImportError:
         pass
 
