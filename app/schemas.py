@@ -60,16 +60,16 @@ WeeklyQuiz = DraftQuiz
 
 class GenerateQuizRequest(BaseModel):
     module_id: str | int
-    quiz_title: str
-    file_ids: list[int]
+    quiz_title: str = Field(max_length=200)
+    file_ids: list[int] = Field(max_length=50)
     question_types: dict[str, int]
     points_per_type: dict[str, int] = Field(default_factory=dict)
-    points_per_q: int = 1
-    mc_options: int = 4
-    matching_pairs: int = 4
+    points_per_q: int = Field(default=1, ge=1, le=100)
+    mc_options: int = Field(default=4, ge=2, le=10)
+    matching_pairs: int = Field(default=4, ge=2, le=20)
     include_answer_feedback: bool = False
     include_agentic_feedback: bool = False
-    custom_instructions: str = ""
+    custom_instructions: str = Field(default="", max_length=2000)
     model_id: str | None = None
 
 

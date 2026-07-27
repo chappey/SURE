@@ -52,16 +52,6 @@ def course_is_teacher(canvas, course_id: int) -> bool:
     """Return True if the user can teach in the given course."""
     if any(c["id"] == course_id for c in list_teacher_courses(canvas, include_course_id=course_id)):
         return True
-    # Dev/admin token fallback: readable course implies access in local setups.
-    try:
-        canvas.get_course(course_id)
-        from app import config
-        from app.auth import oauth_enabled
-
-        if config.CANVAS_API_TOKEN and not oauth_enabled():
-            return True
-    except Exception:
-        pass
     return False
 
 

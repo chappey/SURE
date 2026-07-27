@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import secrets
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from google.genai import errors as genai_errors
 
 from app import config
@@ -24,11 +24,15 @@ from app.deployment import deploy_quiz_to_canvas, find_module_by_id_or_name
 from app.extraction import extract_file_text, is_supported_material
 from app.generation import format_llm_error, generate_weekly_quiz
 from app.llm.catalog import list_models_for_api, resolve_model
+from app.llm.fallback import AllModelsFailedError
+from app.rate_limiter import rate_limit_generate
 from app.quizzes_service import (
     build_quizzes_overview,
     get_quiz_stats,
     process_agentic_feedback,
 )
+from pydantic import BaseModel
+
 from app.schemas import (
     DeployQuizRequest,
     GenerateQuizRequest,
@@ -234,6 +238,7 @@ def api_generate_quiz(
     canvas: CanvasClientDep,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
+    ___: None = Depends(rate_limit_generate),
 ):
     """Download files, extract text, and generate a quiz via the selected AI model."""
     model_entry = None
@@ -277,10 +282,11 @@ def api_generate_quiz(
         if num_mc + num_tf + num_matching == 0:
             raise HTTPException(status_code=400, detail="Must specify at least one question to generate")
 
-        try:
-            model_entry = resolve_model(body.model_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if body.model_id:
+            try:
+                model_entry = resolve_model(body.model_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         include_answer_feedback = body.include_answer_feedback and not body.include_agentic_feedback
 
@@ -308,7 +314,7 @@ def api_generate_quiz(
             matching_pairs=body.matching_pairs,
             include_answer_feedback=include_answer_feedback,
             custom_instructions=body.custom_instructions,
-            model_id=model_entry.id,
+            model_id=body.model_id,
         )
         if body.quiz_title:
             quiz.quiz_title = body.quiz_title
@@ -338,7 +344,9 @@ def api_generate_quiz(
             except ValueError:
                 pass
         status, detail = format_llm_error(exc, model_entry)
-        if status >= 500 and not isinstance(exc, genai_errors.APIError):
+        if isinstance(exc, AllModelsFailedError):
+            logger.warning("All available models failed: %s", exc.errors)
+        elif status >= 500 and not isinstance(exc, genai_errors.APIError):
             logger.exception("Error in /api/generate-quiz")
         else:
             logger.warning("LLM error in /api/generate-quiz: %s", detail)
@@ -641,12 +649,16 @@ def preview_agentic_feedback_endpoint(
         raise HTTPException(status_code=500, detail="Failed to load feedback preview.") from exc
 
 
+class ApproveFeedbackRequest(BaseModel):
+    submissions: list[dict] = []
+
+
 @router.post("/quizzes/{quiz_id}/agentic-feedback/approve")
 def approve_agentic_feedback_endpoint(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
     quiz_id: str,
-    body: dict,
+    body: ApproveFeedbackRequest,
     request: Request,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
@@ -662,14 +674,13 @@ def approve_agentic_feedback_endpoint(
 
     try:
         course = canvas.get_course(course_id)
-        approved_subs = body.get("submissions") or []
+        approved_subs = body.submissions or []
         count = 0
 
-        for item in approvedSubmissions if 'approvedSubmissions' in locals() else approved_subs:
+        for item in approved_subs:
             sub_id = item.get("submission_id")
             comments = item.get("comments") or {}
             if sub_id and comments:
-                # Format payload into question_payload expected by Canvas comment writer
                 payload = {
                     int(k) if str(k).isdigit() else k: {"comment": str(v)}
                     for k, v in comments.items()

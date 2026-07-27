@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from app.llm.catalog import resolve_model
+from app.llm.fallback import fallback_models, generate_text_with_fallback
 from app.llm.registry import generate_text
 from app.schemas import GeneratedAnswer, GeneratedQuestion
 
@@ -218,8 +219,12 @@ def generate_question_feedback(
     explanation: str,
     model_id: str | None = None,
 ) -> str:
-    """Call the LLM to produce one personalized comment."""
-    entry = resolve_model(model_id)
+    """Call the LLM to produce one personalized comment.
+
+    When ``model_id`` is None, the system tries all available models in catalog
+    order (fallback queue). When a specific ``model_id`` is given, only that
+    model is used.
+    """
     prompt = build_feedback_prompt(
         question_text=question_text,
         correct_answer=correct_answer,
@@ -228,7 +233,14 @@ def generate_question_feedback(
         confidence=confidence,
         explanation=explanation,
     )
-    text = generate_text(entry, prompt).strip()
+
+    if model_id is None:
+        models = fallback_models(requested_id=None)
+        text, _entry = generate_text_with_fallback(models, prompt)
+    else:
+        entry = resolve_model(model_id)
+        text = generate_text(entry, prompt).strip()
+
     if not text:
         raise RuntimeError("LLM returned empty feedback")
     return text

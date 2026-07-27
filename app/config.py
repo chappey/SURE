@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_HTTP_REFERER: str = ""
     OPENROUTER_APP_NAME: str = "EasyLearn"
-    SESSION_SECRET_KEY: str = "some-very-secret-key-change-in-production"
+    SESSION_SECRET_KEY: str = ""
     CANVAS_PUBLIC_URL: str = ""
     EASYLEARN_PUBLIC_URL: str = ""
     RAG_ENABLED: bool = False
@@ -39,6 +39,16 @@ class Settings(BaseSettings):
     RAG_MAX_TOKENS: int = 12000
 
 
+
+    @field_validator("SESSION_SECRET_KEY", mode="after")
+    @classmethod
+    def reject_insecure_default(cls, v: str) -> str:
+        if not v.strip() or v.strip() == "some-very-secret-key-change-in-production":
+            raise ValueError(
+                "SESSION_SECRET_KEY must be set to a random 64-char hex string. "
+                "Generate one:  python3 -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        return v
 
     @field_validator("CANVAS_API_URL", mode="after")
     @classmethod

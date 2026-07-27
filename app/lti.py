@@ -17,7 +17,8 @@ from pylti1p3.message_launch import MessageLaunch
 from pylti1p3.launch_data_storage.base import LaunchDataStorage
 
 class InMemoryDataStorage(LaunchDataStorage[t.Any]):
-    _cache: t.Dict[str, t.Any] = {}
+    def __init__(self):
+        self._cache: dict[str, t.Any] = {}
 
     def get_session_cookie_name(self) -> None:
         return None

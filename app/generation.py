@@ -7,6 +7,7 @@ import time
 
 from app.llm.catalog import ModelEntry, resolve_model
 from app.llm.errors import format_llm_error
+from app.llm.fallback import fallback_models, generate_json_with_fallback
 from app.llm.registry import generate_json as provider_generate_json
 from app.schemas import DraftQuiz, validate_questions
 
@@ -110,15 +111,12 @@ def generate_weekly_quiz(
     custom_instructions: str = "",
     model_id: str | None = None,
 ) -> tuple[DraftQuiz, ModelEntry]:
-    """Generate a quiz using the selected model from the catalog (or auto-select)."""
-    entry = resolve_model(model_id)
+    """Generate a quiz using the selected model from the catalog (or auto-select).
 
-    # RAG material selection (passthrough when RAG_ENABLED is False)
-    from app.retrieval import select_material
-
-    material_text = select_material(material_text, query=week_name)
-
-    # RAG: focus the material via chunk -> bge embeddings -> FAISS selection
+    When ``model_id`` is None, the system tries all available models in catalog
+    order (fallback queue). When a specific ``model_id`` is given, only that
+    model is used.
+    """
     from app.retrieval import select_material
 
     material_text = select_material(material_text, query=week_name)
@@ -135,10 +133,17 @@ def generate_weekly_quiz(
         custom_instructions=custom_instructions,
     )
 
-    logger.info("Generating quiz via %s (%s / %s)", entry.label, entry.provider, entry.model)
     schema = DraftQuiz.model_json_schema()
     t0 = time.perf_counter()
-    text = provider_generate_json(entry, prompt, schema)
+
+    if model_id is None:
+        models = fallback_models(requested_id=None)
+        text, entry = generate_json_with_fallback(models, prompt, schema)
+    else:
+        entry = resolve_model(model_id)
+        logger.info("Generating quiz via %s (%s / %s)", entry.label, entry.provider, entry.model)
+        text = provider_generate_json(entry, prompt, schema)
+
     llm_ms = (time.perf_counter() - t0) * 1000
 
     quiz = DraftQuiz.model_validate_json(text)

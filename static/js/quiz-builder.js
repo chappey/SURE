@@ -660,7 +660,7 @@ function renderDraftEditor() {
                     <span style="color: var(--text-muted);">${points} ${ptLabel}</span>
                 </div>
             </div>
-            <div class="question-title" id="q-text-${qIndex}">${q.question_text}</div>
+            <div class="question-title" id="q-text-${qIndex}">${escapeHtml(q.question_text)}</div>
 
             <div class="answers-list" id="q-answers-list-${qIndex}">
                 ${answersHTML}

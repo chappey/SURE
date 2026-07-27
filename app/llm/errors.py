@@ -5,6 +5,7 @@ from __future__ import annotations
 from google.genai import errors as genai_errors
 
 from app.llm.catalog import ModelEntry
+from app.llm.fallback import AllModelsFailedError
 
 
 def format_llm_error(exc: Exception, model: ModelEntry | None = None) -> tuple[int, str]:
@@ -74,6 +75,9 @@ def format_llm_error(exc: Exception, model: ModelEntry | None = None) -> tuple[i
             return 400, prefix + (api_message or f"OpenRouter rejected the request (HTTP {code}).")
     except ImportError:
         pass
+
+    if isinstance(exc, AllModelsFailedError):
+        return 503, exc.user_message
 
     if isinstance(exc, ValueError):
         return 400, str(exc)

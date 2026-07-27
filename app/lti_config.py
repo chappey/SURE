@@ -98,4 +98,17 @@ def build_tool_conf() -> ToolConfDict:
     return conf
 
 
-tool_conf = build_tool_conf()
+_tool_conf: ToolConfDict | None = None
+
+
+def get_tool_conf() -> ToolConfDict:
+    global _tool_conf
+    if _tool_conf is None:
+        _tool_conf = build_tool_conf()
+    return _tool_conf
+
+
+def __getattr__(name: str) -> ToolConfDict:
+    if name == "tool_conf":
+        return get_tool_conf()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -139,7 +139,7 @@ def build_quizzes_overview(
             "module_id": full.get("module_id"),
             "module_name": full.get("module_name"),
             "includes_agentic_feedback": full.get(
-                "includes_agentic_feedback", True
+                "includes_agentic_feedback", False
             ),
             "published": full.get("published", False),
             "feedback_done": feedback_done,
