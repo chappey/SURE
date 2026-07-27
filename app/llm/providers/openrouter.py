@@ -70,6 +70,7 @@ def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str
     client = _client()
     prepared_schema = prepare_openrouter_schema(schema)
 
+    logger.info("OpenRouter requesting: model=%s (mode=json_schema)", model.model)
     try:
         response = client.chat.completions.create(
             model=model.model,
@@ -87,8 +88,8 @@ def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str
         return _extract_message_text(response)
     except Exception as schema_exc:
         logger.warning(
-            "OpenRouter json_schema failed for %s, falling back to json_object: %s",
-            model.model,
+            "OpenRouter json_schema failed for model %s (%s), falling back to json_object",
+            model.id,
             schema_exc,
         )
 
@@ -115,6 +116,7 @@ def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str
 
 def generate_text(model: ModelEntry, prompt: str) -> str:
     client = _client()
+    logger.info("OpenRouter requesting: model=%s (mode=text)", model.model)
     response = client.chat.completions.create(
         model=model.model,
         messages=[{"role": "user", "content": prompt}],

@@ -138,10 +138,16 @@ def generate_weekly_quiz(
 
     if model_id is None:
         models = fallback_models(requested_id=None)
+        logger.info(
+            "Generating quiz: Auto mode, %d model(s) available",
+            len(models),
+        )
         text, entry = generate_json_with_fallback(models, prompt, schema)
     else:
         entry = resolve_model(model_id)
-        logger.info("Generating quiz via %s (%s / %s)", entry.label, entry.provider, entry.model)
+        logger.info(
+            "Generating quiz via %s (%s/%s)", entry.id, entry.provider, entry.model
+        )
         text = provider_generate_json(entry, prompt, schema)
 
     llm_ms = (time.perf_counter() - t0) * 1000

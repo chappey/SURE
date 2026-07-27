@@ -95,7 +95,7 @@ def get_course_info(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in /api/course-info")
+        logger.warning("course %s: failed to fetch course info: %s", course_id, exc)
         raise HTTPException(status_code=500, detail="Failed to fetch course info.") from exc
 
 
@@ -112,7 +112,7 @@ def get_courses(
         include_id = int(active_id) if active_id else None
         return list_teacher_courses(canvas, include_course_id=include_id)
     except Exception as exc:
-        logger.exception("Error in GET /api/courses")
+        logger.warning("failed to list courses: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to list courses.") from exc
 
 
@@ -226,7 +226,7 @@ def get_modules(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in /api/modules")
+        logger.warning("course %s: failed to fetch modules: %s", course_id, exc)
         raise HTTPException(status_code=500, detail="Failed to fetch course modules.") from exc
 
 
@@ -414,7 +414,7 @@ def api_deploy_quiz(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in /api/deploy-quiz")
+        logger.warning("course %s: quiz deployment failed: %s", course_id, exc)
         raise HTTPException(status_code=500, detail="Quiz deployment failed.") from exc
 
 
@@ -428,7 +428,7 @@ def get_quizzes(
     try:
         return list_quizzes(course_id)
     except Exception as exc:
-        logger.exception("Error in GET /api/quizzes")
+        logger.warning("course %s: failed to list quiz drafts: %s", course_id, exc)
         raise HTTPException(status_code=500, detail="Failed to list quiz drafts.") from exc
 
 
@@ -447,7 +447,7 @@ def get_quizzes_overview(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in GET /api/quizzes/overview")
+        logger.warning("course %s: failed to load quiz overview: %s", course_id, exc)
         raise HTTPException(status_code=500, detail="Failed to load quiz overview.") from exc
 
 
@@ -472,7 +472,7 @@ def get_quiz_by_id(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in GET /api/quizzes/%s", quiz_id)
+        logger.warning("course %s quiz %s: failed to load draft: %s", course_id, quiz_id, exc)
         raise HTTPException(status_code=500, detail="Failed to load quiz draft.") from exc
 
 
@@ -498,7 +498,7 @@ def get_quiz_stats_endpoint(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in GET /api/quizzes/%s/stats", quiz_id)
+        logger.warning("course %s quiz %s: failed to fetch stats: %s", course_id, quiz_id, exc)
         raise HTTPException(status_code=500, detail="Failed to fetch quiz statistics.") from exc
 
 
@@ -542,7 +542,7 @@ def process_agentic_feedback_endpoint(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in POST /api/quizzes/%s/agentic-feedback/process", quiz_id)
+        logger.warning("course %s quiz %s: agentic feedback processing failed: %s", course_id, quiz_id, exc)
         raise HTTPException(
             status_code=500, detail="Failed to process agentic feedback."
         ) from exc
@@ -645,7 +645,7 @@ def preview_agentic_feedback_endpoint(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in POST /api/quizzes/%s/agentic-feedback/preview", quiz_id)
+        logger.warning("course %s quiz %s: feedback preview failed: %s", course_id, quiz_id, exc)
         raise HTTPException(status_code=500, detail="Failed to load feedback preview.") from exc
 
 
@@ -706,7 +706,7 @@ def approve_agentic_feedback_endpoint(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in POST /api/quizzes/%s/agentic-feedback/approve", quiz_id)
+        logger.warning("course %s quiz %s: approve feedback failed: %s", course_id, quiz_id, exc)
         raise HTTPException(status_code=500, detail="Failed to push approved feedback.") from exc
 
 
@@ -741,6 +741,6 @@ def publish_quiz_endpoint(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error in POST /api/quizzes/%s/publish", quiz_id)
+        logger.warning("course %s quiz %s: publish failed: %s", course_id, quiz_id, exc)
         raise HTTPException(status_code=500, detail="Failed to publish quiz.") from exc
 

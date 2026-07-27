@@ -60,7 +60,7 @@ def exchange_code_for_token(code: str, redirect_uri: str) -> dict:
         _token_url(), data=payload, headers=_token_request_headers(), timeout=30
     )
     if not response.ok:
-        logger.error(
+        logger.warning(
             "OAuth token exchange failed: %s %s", response.status_code, response.text[:500]
         )
         raise ValueError("Failed to exchange authorization code with Canvas.")
@@ -82,7 +82,7 @@ def refresh_access_token(refresh_token: str) -> dict:
         _token_url(), data=payload, headers=_token_request_headers(), timeout=30
     )
     if not response.ok:
-        logger.error(
+        logger.warning(
             "OAuth token refresh failed: %s %s", response.status_code, response.text[:500]
         )
         raise ValueError("Failed to refresh Canvas access token.")

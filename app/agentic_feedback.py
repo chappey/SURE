@@ -235,9 +235,11 @@ def generate_question_feedback(
     )
 
     if model_id is None:
+        logger.info("Agentic feedback: Auto mode")
         models = fallback_models(requested_id=None)
         text, _entry = generate_text_with_fallback(models, prompt)
     else:
+        logger.info("Agentic feedback: model=%s", model_id)
         entry = resolve_model(model_id)
         text = generate_text(entry, prompt).strip()
 

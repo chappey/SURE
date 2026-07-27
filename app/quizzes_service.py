@@ -264,9 +264,9 @@ def process_agentic_feedback(
             )
             since_checkpoint = 0
         except Exception:
-            logger.exception(
-                "Failed to checkpoint agentic feedback progress for quiz %s",
-                easylearn_quiz_id,
+            logger.warning(
+                "Failed to checkpoint agentic feedback progress for course %s quiz %s",
+                course_id, easylearn_quiz_id, exc_info=True,
             )
 
     for sub in submissions:
@@ -337,7 +337,7 @@ def process_agentic_feedback(
             if "429" in msg or "rate limit" in msg.lower() or "Rate limit" in msg:
                 consecutive_rate_limits += 1
                 sleep_s = min(30.0, 2.0 * consecutive_rate_limits)
-                logger.info(
+                logger.warning(
                     "Rate limit signal; sleeping %.1fs before next submission", sleep_s
                 )
                 time.sleep(sleep_s)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import sys
 import time
 # Register custom pylti1p3 FastAPI adapter before router modules import it.
@@ -53,27 +54,22 @@ async def log_requests(request: Request, call_next):
     start_time = time.perf_counter()
     path = request.url.path
     method = request.method
-    logger.info("Incoming request: %s %s", method, path)
+    rid = secrets.token_hex(4)
+    request.state.request_id = rid
+    logger.info("[%s] → %s %s", rid, method, path)
 
     try:
         response = await call_next(request)
     except Exception:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.exception(
-            "Unhandled exception during request %s %s - Time: %.2fms",
-            method,
-            path,
-            elapsed_ms,
+            "[%s] Unhandled exception during %s %s (%.0fms)", rid, method, path, elapsed_ms
         )
         return JSONResponse(status_code=500, content={"error": "Internal Server Error"})
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     logger.info(
-        "Completed request: %s %s - Status: %s - Time: %.2fms",
-        method,
-        path,
-        response.status_code,
-        elapsed_ms,
+        "[%s] ← %s %s — %s (%.0fms)", rid, method, path, response.status_code, elapsed_ms
     )
     return response
 

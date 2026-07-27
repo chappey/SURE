@@ -46,12 +46,16 @@ def generate_json_with_fallback(
             text = _generate_json(model, prompt, schema)
             if text:
                 if len(models) > 1:
-                    logger.info("Auto fallback succeeded with %s (%s)", model.label, model.id)
+                    logger.info(
+                        "LLM fallback succeeded: %s (%s/%s)", model.id, model.provider, model.model
+                    )
                 return text, model
         except Exception as exc:
             msg = str(exc)[:300]
             errors.append((model.id, msg))
-            logger.warning("Model %s (%s) failed: %s", model.label, model.id, msg)
+            logger.warning(
+                "LLM model failed: %s (%s/%s) — %s", model.id, model.provider, model.model, msg
+            )
     raise AllModelsFailedError(errors)
 
 
@@ -65,10 +69,14 @@ def generate_text_with_fallback(
             text = _generate_text(model, prompt)
             if text:
                 if len(models) > 1:
-                    logger.info("Auto fallback succeeded with %s (%s)", model.label, model.id)
+                    logger.info(
+                        "LLM fallback succeeded: %s (%s/%s)", model.id, model.provider, model.model
+                    )
                 return text, model
         except Exception as exc:
             msg = str(exc)[:300]
             errors.append((model.id, msg))
-            logger.warning("Model %s (%s) failed: %s", model.label, model.id, msg)
+            logger.warning(
+                "LLM model failed: %s (%s/%s) — %s", model.id, model.provider, model.model, msg
+            )
     raise AllModelsFailedError(errors)
