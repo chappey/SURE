@@ -12,7 +12,7 @@ from google.genai import errors as genai_errors
 from app import config
 from app.auth import build_session_info
 from app.canvas import download_canvas_file
-from app.canvas_courses import list_teacher_courses, publish_canvas_quiz
+from app.canvas_courses import fetch_quiz_submissions_with_answers, list_teacher_courses, publish_canvas_quiz
 from app.config import CACHE_DIR
 from app.dependencies import (
     CanvasClientDep,
@@ -22,6 +22,7 @@ from app.dependencies import (
     validate_course_access,
 )
 from app.deployment import deploy_quiz_to_canvas, find_module_by_id_or_name
+from app.agentic_feedback import generate_batched_feedback
 from app.extraction import extract_file_text, is_supported_material
 from app.generation import format_llm_error, generate_weekly_quiz
 from app.llm.catalog import list_models_for_api, resolve_model
@@ -547,33 +548,56 @@ def preview_agentic_feedback_endpoint(
     content_questions = draft.get("questions") or []
     mapping = (draft.get("agentic_feedback") or {}).get("questions") or []
 
+    feedback_items = generate_batched_feedback(
+        content_questions=content_questions,
+        submissions=submissions,
+        mapping=mapping,
+        model_id=draft.get("model_id"),
+    )
+
+    feedback_lookup: dict[tuple[int, int], str] = {}
+    for item in feedback_items:
+        feedback_lookup[(item.submission_id, item.question_index)] = item.feedback
+
+    from app.agentic_feedback import _answer_by_question_id, _is_correct, _response_text
+
     parsed_subs = []
     for sub in submissions:
         sub_id = sub.get("id")
         user_id = sub.get("user_id")
-        sub_data = sub.get("submission_data") or []
-        
-        payload = {}
-        if sub_data and mapping:
-            try:
-                payload = build_submission_question_payload(
-                    sub_data, mapping, content_questions, model_id=draft.get("model_id")
-                )
-            except Exception as p_exc:
-                logger.warning("Error building payload for sub %s: %s", sub_id, p_exc)
+        by_id = _answer_by_question_id(sub.get("submission_data") or [])
 
         q_list = []
         for q_idx, q_item in enumerate(content_questions):
-            entry = payload.get(q_idx, {})
+            row = next((r for r in mapping if r.get("content_index") == q_idx), None)
+
+            if row:
+                content_canvas_id = row.get("content_canvas_id")
+                conf_canvas_id = row.get("confidence_canvas_id")
+                expl_canvas_id = row.get("explanation_canvas_id")
+
+                content_item = by_id.get(int(content_canvas_id)) if content_canvas_id else None
+                student_answer = _response_text(content_item)
+                is_correct = _is_correct(content_item, q_item)
+                confidence = _response_text(by_id.get(int(conf_canvas_id))) if conf_canvas_id else ""
+                explanation = _response_text(by_id.get(int(expl_canvas_id))) if expl_canvas_id else ""
+            else:
+                student_answer = ""
+                confidence = ""
+                explanation = ""
+                is_correct = False
+
+            ai_feedback = feedback_lookup.get((sub_id, q_idx + 1), "")
+
             q_list.append({
                 "q_index": q_idx,
                 "question_id": q_item.get("id", q_idx),
                 "question_text": q_item.get("question_text", f"Question {q_idx + 1}"),
-                "student_answer": entry.get("student_answer", ""),
-                "confidence": entry.get("confidence", "Normal"),
-                "explanation": entry.get("explanation", ""),
-                "score": entry.get("score", 1),
-                "ai_feedback": entry.get("comment", "Great work on this topic!")
+                "student_answer": student_answer,
+                "confidence": confidence,
+                "explanation": explanation,
+                "score": 1 if is_correct else 0,
+                "ai_feedback": ai_feedback,
             })
 
         parsed_subs.append({
@@ -581,7 +605,7 @@ def preview_agentic_feedback_endpoint(
             "user_id": user_id,
             "user_name": f"Student #{user_id}",
             "score": sub.get("score"),
-            "questions": q_list
+            "questions": q_list,
         })
 
     return {
@@ -589,7 +613,7 @@ def preview_agentic_feedback_endpoint(
         "quiz_title": draft.get("quiz_title", "Quiz Feedback Review"),
         "canvas_quiz_id": int(canvas_quiz_id),
         "questions": content_questions,
-        "submissions": parsed_subs
+        "submissions": parsed_subs,
     }
 
 

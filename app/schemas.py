@@ -95,6 +95,17 @@ class DeployQuizRequest(BaseModel):
     include_agentic_feedback: bool | None = None
 
 
+class BatchFeedbackItem(BaseModel):
+    submission_id: int
+    """Canvas submission ID for the student."""
+    question_index: int
+    """1-based question number (Q1, Q2, ...)."""
+    feedback: str
+    """2–4 sentences of personalized feedback."""
+
+class BatchFeedbackResponse(BaseModel):
+    feedbacks: list[BatchFeedbackItem]
+
 class ProcessAgenticFeedbackRequest(BaseModel):
     force: bool = False
 

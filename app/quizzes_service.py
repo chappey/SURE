@@ -8,13 +8,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from app.agentic_feedback import generate_batched_feedback
 from app.canvas_courses import (
     fetch_quiz_statistics,
     fetch_quiz_submissions_with_answers,
     get_canvas_quiz,
     update_quiz_submission_comments,
 )
-from app.agentic_feedback import build_submission_question_payload
 from app.quiz_statistics import parse_quiz_statistics
 from app.storage import (
     get_course_dir,
@@ -72,7 +72,6 @@ def _canvas_meta_cache_path(course_id: int | str, canvas_quiz_id: int) -> Any:
 
 
 def _ensure_quiz_url(summary: dict[str, Any], course_id: int) -> dict[str, Any]:
-    """Derive the browser-facing Canvas link on read (never persisted)."""
     from app import config
 
     canvas_quiz_id = summary.get("canvas_quiz_id")
@@ -82,7 +81,6 @@ def _ensure_quiz_url(summary: dict[str, Any], course_id: int) -> dict[str, Any]:
 
 
 def _fetch_canvas_quiz_meta(course, course_id: int | str, canvas_quiz_id: int) -> dict[str, Any] | None:
-    """Return {published, question_count} for a Canvas quiz, with a short TTL cache."""
     cached = _read_ttl_cache(_canvas_meta_cache_path(course_id, canvas_quiz_id), CANVAS_META_TTL_SECONDS)
     if cached is not None:
         return cached
@@ -122,11 +120,6 @@ def build_quizzes_overview(
     course_id: int,
     status_filter: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Merge local drafts with live Canvas publish state.
-
-    Canvas syncs run in parallel with a short TTL cache; per-quiz statistics are
-    intentionally NOT fetched here (they load on demand in the detail view).
-    """
     summaries: list[dict[str, Any]] = []
     for row in list_quizzes(course_id):
         full = get_quiz_draft(course_id, row["id"]) or {}
@@ -146,7 +139,6 @@ def build_quizzes_overview(
             "submission_count": None,
             "feedback_pending": None,
         }
-        # Prefer last-known Canvas stats (no extra API call on list load).
         if canvas_quiz_id:
             try:
                 cached = get_cached_stats(course_id, int(canvas_quiz_id))
@@ -175,7 +167,6 @@ def build_quizzes_overview(
 
 
 def get_quiz_stats(course, canvas, course_id: int, canvas_quiz_id: int) -> dict[str, Any]:
-    """Return cached or fresh quiz statistics from Canvas."""
     cached = get_cached_stats(course_id, canvas_quiz_id)
     if cached:
         return cached
@@ -209,17 +200,13 @@ def process_agentic_feedback(
     draft_quiz_id: str | None = None,
     max_submissions: int | None = None,
 ) -> dict[str, Any]:
-    """Generate and write personalized comments for quiz submissions.
+    """Generate and write personalized comments with one batched LLM call.
 
-    Designed for class-scale batches (~100):
-    - Skips already-processed submission IDs unless ``force``
-    - Checkpoints ``agentic_feedback_processed`` every few successes so a kill
-      mid-batch can resume without redoing finished work
-    - Backs off briefly on rate-limit-style errors, then continues
-    - Optional ``max_submissions`` caps work per request (chunked runs)
+    Builds a single prompt containing every question and every student answer,
+    sends it to the LLM once (or a few times for very large classes), then
+    writes the feedback comments to Canvas per submission.
 
-    ``draft_quiz_id`` is the EasyLearn draft id (disk key). Falls back to
-    ``draft["id"]`` when omitted.
+    Checkpoints after each run so a retry won\u2019t redo finished work.
     """
     if not draft.get("includes_agentic_feedback"):
         raise ValueError("This quiz does not have agentic feedback enabled.")
@@ -240,118 +227,102 @@ def process_agentic_feedback(
     processed: dict[str, Any] = dict(draft.get("agentic_feedback_processed") or {})
     easylearn_quiz_id = draft_quiz_id or draft.get("id")
 
-    submissions = fetch_quiz_submissions_with_answers(course, int(canvas_quiz_id))
+    # Fetch all submissions with answers
+    all_submissions = fetch_quiz_submissions_with_answers(course, int(canvas_quiz_id))
+
+    eligible_subs = [
+        s for s in all_submissions
+        if s.get("workflow_state") in ("complete", "graded", "pending_review", None)
+        and s.get("submission_data")
+    ]
+    eligible = len(eligible_subs)
+
+    # Determine which eligible submissions are new (not yet processed)
+    already_processed = {str(s["id"]) for s in eligible_subs if str(s["id"]) in processed} if not force else set()
+    skipped = len(already_processed)
+
+    to_process = [s for s in eligible_subs if str(s["id"]) not in already_processed]
+    if max_submissions is not None:
+        to_process = to_process[:max_submissions]
+
     results: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    skipped = 0
-    eligible = 0
-    consecutive_rate_limits = 0
-    checkpoint_every = 3
-    since_checkpoint = 0
 
-    def _checkpoint() -> None:
-        nonlocal since_checkpoint
-        if not easylearn_quiz_id:
-            return
-        try:
-            update_quiz_draft(
-                course_id=course_id,
-                quiz_id=str(easylearn_quiz_id),
-                patch={
-                    "agentic_feedback_processed": processed,
-                    "agentic_feedback_last_run": time.time(),
-                },
-            )
-            since_checkpoint = 0
-        except Exception:
-            logger.warning(
-                "Failed to checkpoint agentic feedback progress for course %s quiz %s",
-                course_id, easylearn_quiz_id, exc_info=True,
-            )
+    if not to_process:
+        logger.info("No new submissions to process for quiz %s", easylearn_quiz_id)
+    else:
+        feedback_items = generate_batched_feedback(
+            content_questions=content_questions,
+            submissions=to_process,
+            mapping=mapping,
+            model_id=model_id,
+        )
 
-    for sub in submissions:
-        state = sub.get("workflow_state")
-        if state not in ("complete", "graded", "pending_review", None):
-            continue
+        # Group feedback items by submission_id
+        feedback_by_sub: dict[int, list] = {}
+        for item in feedback_items:
+            feedback_by_sub.setdefault(item.submission_id, []).append(item)
 
-        eligible += 1
-        sub_id = str(sub["id"])
-        if not force and sub_id in processed:
-            skipped += 1
-            continue
-
-        if max_submissions is not None and len(results) >= max_submissions:
-            break
-
-        if not sub.get("submission_data"):
-            errors.append(
-                {
-                    "submission_id": sub.get("id"),
-                    "error": "No answer data available from Canvas for this submission.",
-                }
-            )
-            continue
-
-        try:
-            payload = build_submission_question_payload(
-                sub["submission_data"],
-                mapping,
-                content_questions,
-                model_id=model_id,
-            )
-            comment_count = sum(1 for entry in payload.values() if "comment" in entry)
-            if not comment_count:
-                errors.append({"submission_id": sub["id"], "error": "No comments generated"})
+        # Write per-submission comments to Canvas
+        for sub in to_process:
+            sub_id = int(sub["id"])
+            items = feedback_by_sub.get(sub_id, [])
+            if not items:
+                errors.append({"submission_id": sub_id, "error": "No feedback generated"})
                 continue
 
-            update_quiz_submission_comments(
-                course,
-                int(canvas_quiz_id),
-                int(sub["id"]),
-                attempt=int(sub.get("attempt") or 1),
-                question_payload=payload,
-            )
-            processed[sub_id] = {
+            payload: dict[str, dict[str, Any]] = {}
+            for item in items:
+                q_idx = item.question_index - 1
+                if q_idx < 0 or q_idx >= len(mapping):
+                    continue
+                row = mapping[q_idx]
+                content_qid = row.get("content_canvas_id")
+                expl_qid = row.get("explanation_canvas_id")
+                if content_qid and expl_qid:
+                    payload[str(content_qid)] = {"comment": item.feedback}
+                    payload[str(expl_qid)] = {"score": 0}
+
+            if not payload:
+                errors.append({"submission_id": sub_id, "error": "No Canvas question IDs mapped"})
+                continue
+
+            try:
+                update_quiz_submission_comments(
+                    course,
+                    int(canvas_quiz_id),
+                    sub_id,
+                    attempt=int(sub.get("attempt") or 1),
+                    question_payload=payload,
+                )
+            except Exception as exc:
+                errors.append({"submission_id": sub_id, "error": str(exc)[:300]})
+                logger.warning("Failed to write feedback for submission %s: %s", sub_id, exc)
+                continue
+
+            processed[str(sub_id)] = {
                 "processed_at": time.time(),
-                "questions": comment_count,
+                "questions": len([k for k in payload if "comment" in (payload[k] or {})]),
                 "user_id": sub.get("user_id"),
             }
-            results.append(
-                {
-                    "submission_id": sub["id"],
-                    "user_id": sub.get("user_id"),
-                    "questions": comment_count,
-                }
-            )
-            consecutive_rate_limits = 0
-            since_checkpoint += 1
-            if since_checkpoint >= checkpoint_every:
-                _checkpoint()
-        except Exception as exc:
-            msg = str(exc)
-            logger.warning(
-                "Agentic feedback failed for submission %s: %s", sub.get("id"), exc
-            )
-            errors.append({"submission_id": sub.get("id"), "error": msg})
-            # Mild backoff when providers throttle (message often includes 429)
-            if "429" in msg or "rate limit" in msg.lower() or "Rate limit" in msg:
-                consecutive_rate_limits += 1
-                sleep_s = min(30.0, 2.0 * consecutive_rate_limits)
-                logger.warning(
-                    "Rate limit signal; sleeping %.1fs before next submission", sleep_s
-                )
-                time.sleep(sleep_s)
-            else:
-                consecutive_rate_limits = 0
+            results.append({
+                "submission_id": sub_id,
+                "user_id": sub.get("user_id"),
+                "questions": len([k for k in payload if "comment" in (payload[k] or {})]),
+            })
 
     last_run = time.time()
-    if results or since_checkpoint:
-        _checkpoint()
+    update_quiz_draft(
+        course_id=course_id,
+        quiz_id=str(easylearn_quiz_id),
+        patch={
+            "agentic_feedback_processed": processed,
+            "agentic_feedback_last_run": last_run,
+        },
+    )
 
     remaining = max(0, eligible - len(processed))
-    coverage_pct = (
-        round(100.0 * len(processed) / eligible, 1) if eligible else 0.0
-    )
+    coverage_pct = round(100.0 * len(processed) / eligible, 1) if eligible else 0.0
 
     return {
         "canvas_quiz_id": int(canvas_quiz_id),
