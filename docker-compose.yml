@@ -3,6 +3,9 @@
 #   cp .env.example .env   # fill secrets
 #   docker compose up -d --build
 #
+# Slim image by default (no OCR/RAG packages). To include them:
+#   UV_EXTRAS="--extra ocr --extra rag" docker compose up -d --build
+#
 # With Cloudflare Tunnel (set TUNNEL_TOKEN in .env):
 #   docker compose --profile tunnel up -d --build
 
@@ -11,6 +14,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UV_EXTRAS: ${UV_EXTRAS:-}
     restart: unless-stopped
     env_file:
       - .env
