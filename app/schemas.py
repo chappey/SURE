@@ -101,7 +101,7 @@ class BatchFeedbackItem(BaseModel):
     question_index: int
     """1-based question number (Q1, Q2, ...)."""
     feedback: str
-    """2–4 sentences of personalized feedback."""
+    """1–2 sentences of grounded personalized feedback."""
 
 class BatchFeedbackResponse(BaseModel):
     feedbacks: list[BatchFeedbackItem]

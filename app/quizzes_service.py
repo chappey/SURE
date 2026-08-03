@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +9,8 @@ from typing import Any
 
 from app.agentic_feedback import generate_batched_feedback
 from app.canvas_courses import (
+    count_eligible_quiz_submissions,
+    fetch_quiz_answer_maps,
     fetch_quiz_statistics,
     fetch_quiz_submissions_with_answers,
     get_canvas_quiz,
@@ -17,17 +18,13 @@ from app.canvas_courses import (
 )
 from app.quiz_statistics import parse_quiz_statistics
 from app.storage import (
-    get_course_dir,
     get_quiz_draft,
     list_quizzes,
     update_quiz_draft,
-    write_json_atomic,
 )
 
 logger = logging.getLogger(__name__)
 
-STATS_TTL_SECONDS = 600
-CANVAS_META_TTL_SECONDS = 60
 _OVERVIEW_MAX_WORKERS = 6
 
 
@@ -39,38 +36,6 @@ def _quiz_status(deployed: bool, published: bool) -> str:
     return "draft"
 
 
-def _stats_cache_path(course_id: int | str, canvas_quiz_id: int) -> Any:
-    stats_dir = get_course_dir(course_id) / "stats"
-    stats_dir.mkdir(parents=True, exist_ok=True)
-    return stats_dir / f"{canvas_quiz_id}.json"
-
-
-def _read_ttl_cache(path: Any, ttl_seconds: int) -> dict[str, Any] | None:
-    if not path.is_file():
-        return None
-    if time.time() - path.stat().st_mtime > ttl_seconds:
-        return None
-    try:
-        with path.open(encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-def get_cached_stats(course_id: int | str, canvas_quiz_id: int) -> dict[str, Any] | None:
-    return _read_ttl_cache(_stats_cache_path(course_id, canvas_quiz_id), STATS_TTL_SECONDS)
-
-
-def save_stats_cache(course_id: int | str, canvas_quiz_id: int, data: dict[str, Any]) -> None:
-    write_json_atomic(_stats_cache_path(course_id, canvas_quiz_id), data)
-
-
-def _canvas_meta_cache_path(course_id: int | str, canvas_quiz_id: int) -> Any:
-    meta_dir = get_course_dir(course_id) / "canvas_meta"
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    return meta_dir / f"{canvas_quiz_id}.json"
-
-
 def _ensure_quiz_url(summary: dict[str, Any], course_id: int) -> dict[str, Any]:
     from app import config
 
@@ -80,36 +45,42 @@ def _ensure_quiz_url(summary: dict[str, Any], course_id: int) -> dict[str, Any]:
     return summary
 
 
-def _fetch_canvas_quiz_meta(course, course_id: int | str, canvas_quiz_id: int) -> dict[str, Any] | None:
-    cached = _read_ttl_cache(_canvas_meta_cache_path(course_id, canvas_quiz_id), CANVAS_META_TTL_SECONDS)
-    if cached is not None:
-        return cached
-
+def _fetch_canvas_quiz_meta(course, canvas_quiz_id: int) -> dict[str, Any]:
+    """Fetch live Canvas quiz publish state (no disk cache)."""
     cq = get_canvas_quiz(course, canvas_quiz_id)
-    meta = {
+    return {
         "published": bool(getattr(cq, "published", False)),
         "question_count": getattr(cq, "question_count", None),
     }
-    write_json_atomic(_canvas_meta_cache_path(course_id, canvas_quiz_id), meta)
-    return meta
 
 
-def _sync_canvas_quiz_meta(course, course_id: int | str, summary: dict[str, Any]) -> dict[str, Any]:
+def _sync_deployed_quiz_summary(course, course_id: int | str, summary: dict[str, Any]) -> dict[str, Any]:
+    """Refresh publish meta and live submission count for one deployed quiz."""
     canvas_quiz_id = summary.get("canvas_quiz_id") or summary.get("quiz_id")
     if not canvas_quiz_id:
         summary["status"] = _quiz_status(summary.get("deployed", False), False)
         return summary
 
+    quiz_id_int = int(canvas_quiz_id)
+    summary["canvas_quiz_id"] = quiz_id_int
+
     try:
-        meta = _fetch_canvas_quiz_meta(course, course_id, int(canvas_quiz_id))
-        published = bool(meta.get("published", False)) if meta else False
+        meta = _fetch_canvas_quiz_meta(course, quiz_id_int)
+        published = bool(meta.get("published", False))
         summary["published"] = published
-        summary["canvas_quiz_id"] = int(canvas_quiz_id)
-        summary["question_count"] = (meta or {}).get("question_count") or summary.get("questions_count")
+        summary["question_count"] = meta.get("question_count") or summary.get("questions_count")
         summary["status"] = _quiz_status(True, published)
     except Exception as exc:
         logger.warning("Could not sync Canvas quiz %s: %s", canvas_quiz_id, exc)
         summary["status"] = _quiz_status(summary.get("deployed", False), summary.get("published", False))
+
+    try:
+        sub_n = count_eligible_quiz_submissions(course, quiz_id_int)
+        summary["submission_count"] = sub_n
+        feedback_done = int(summary.get("feedback_done") or 0)
+        summary["feedback_pending"] = max(0, sub_n - feedback_done)
+    except Exception as exc:
+        logger.warning("Could not count submissions for quiz %s: %s", canvas_quiz_id, exc)
 
     return summary
 
@@ -139,21 +110,12 @@ def build_quizzes_overview(
             "submission_count": None,
             "feedback_pending": None,
         }
-        if canvas_quiz_id:
-            try:
-                cached = get_cached_stats(course_id, int(canvas_quiz_id))
-                if cached and cached.get("available"):
-                    sub_n = int(cached.get("submission_count") or 0)
-                    entry["submission_count"] = sub_n
-                    entry["feedback_pending"] = max(0, sub_n - feedback_done)
-            except (TypeError, ValueError):
-                pass
         summaries.append(entry)
 
     deployed = [s for s in summaries if s.get("canvas_quiz_id")]
     if deployed:
         with ThreadPoolExecutor(max_workers=min(_OVERVIEW_MAX_WORKERS, len(deployed))) as pool:
-            list(pool.map(lambda s: _sync_canvas_quiz_meta(course, course_id, s), deployed))
+            list(pool.map(lambda s: _sync_deployed_quiz_summary(course, course_id, s), deployed))
 
     overview: list[dict[str, Any]] = []
     for summary in summaries:
@@ -167,28 +129,90 @@ def build_quizzes_overview(
 
 
 def get_quiz_stats(course, canvas, course_id: int, canvas_quiz_id: int) -> dict[str, Any]:
-    cached = get_cached_stats(course_id, canvas_quiz_id)
-    if cached:
-        return cached
+    """Return live submission count plus optional Canvas question analytics.
+
+    Submission count comes from quiz submissions (includes pending_review).
+    Canvas statistics are used only for hardest-question / score fields.
+    """
+    try:
+        submission_count = count_eligible_quiz_submissions(course, canvas_quiz_id)
+    except Exception as exc:
+        logger.warning("Could not count submissions for quiz %s: %s", canvas_quiz_id, exc)
+        return {"canvas_quiz_id": canvas_quiz_id, "available": False}
+
+    result: dict[str, Any] = {
+        "canvas_quiz_id": canvas_quiz_id,
+        "available": True,
+        "submission_count": submission_count,
+        "generated_at": None,
+        "score_average": None,
+        "score_high": None,
+        "score_low": None,
+        "score_stdev": None,
+        "score_median": None,
+        "grade_distribution": {
+            "mastery_count": 0,
+            "proficient_count": 0,
+            "developing_count": 0,
+            "struggling_count": 0,
+            "pass_rate": 0.0,
+        },
+        "questions": [],
+        "topic_mastery": [],
+    }
 
     raw = fetch_quiz_statistics(canvas, course_id, canvas_quiz_id)
     parsed = parse_quiz_statistics(raw)
-    if not parsed:
-        return {"canvas_quiz_id": canvas_quiz_id, "available": False}
+    if parsed:
+        result["generated_at"] = parsed.get("generated_at")
+        result["score_average"] = parsed.get("score_average")
+        result["score_high"] = parsed.get("score_high")
+        result["score_low"] = parsed.get("score_low")
+        result["score_stdev"] = parsed.get("score_stdev")
+        result["score_median"] = parsed.get("score_median")
+        result["grade_distribution"] = parsed.get("grade_distribution") or result["grade_distribution"]
+        result["questions"] = parsed.get("questions", [])
+        result["topic_mastery"] = _build_topic_mastery(result["questions"])
 
-    result = {
-        "canvas_quiz_id": canvas_quiz_id,
-        "available": True,
-        "generated_at": parsed.get("generated_at"),
-        "submission_count": parsed.get("submission_count", 0),
-        "score_average": parsed.get("score_average"),
-        "score_high": parsed.get("score_high"),
-        "score_low": parsed.get("score_low"),
-        "score_stdev": parsed.get("score_stdev"),
-        "questions": parsed.get("questions", []),
-    }
-    save_stats_cache(course_id, canvas_quiz_id, result)
     return result
+
+
+def _build_topic_mastery(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group question performance by topic keywords or question names."""
+    topics: dict[str, dict[str, int]] = {}
+    for q in questions:
+        name = str(q.get("question_name") or "").strip()
+        topic = "General Knowledge"
+        if ":" in name:
+            topic = name.split(":")[0].strip()
+        elif "[" in name and "]" in name:
+            topic = name.split("]")[0].replace("[", "").strip()
+        elif name:
+            topic = name
+
+        if topic not in topics:
+            topics[topic] = {"total_responses": 0, "correct_responses": 0, "question_count": 0}
+
+        resp = int(q.get("responses") or 0)
+        corr = int(q.get("correct_count") or 0)
+        topics[topic]["total_responses"] += resp
+        topics[topic]["correct_responses"] += corr
+        topics[topic]["question_count"] += 1
+
+    result = []
+    for topic_name, data in topics.items():
+        tot = data["total_responses"]
+        corr = data["correct_responses"]
+        pct = round((corr / tot * 100.0), 1) if tot > 0 else 0.0
+        result.append({
+            "topic": topic_name,
+            "question_count": data["question_count"],
+            "responses": tot,
+            "correct_count": corr,
+            "accuracy_pct": pct,
+        })
+    return result
+
 
 
 def process_agentic_feedback(
@@ -229,6 +253,7 @@ def process_agentic_feedback(
 
     # Fetch all submissions with answers
     all_submissions = fetch_quiz_submissions_with_answers(course, int(canvas_quiz_id))
+    answer_maps = fetch_quiz_answer_maps(course, int(canvas_quiz_id))
 
     eligible_subs = [
         s for s in all_submissions
@@ -256,6 +281,8 @@ def process_agentic_feedback(
             submissions=to_process,
             mapping=mapping,
             model_id=model_id,
+            answer_maps=answer_maps,
+            source_text=(draft.get("source_text") or None),
         )
 
         # Group feedback items by submission_id

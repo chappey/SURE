@@ -11,9 +11,9 @@ import pytest
 @pytest.fixture(autouse=True)
 def _env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SESSION_SECRET_KEY", "test-secret-key-at-least-32-chars!!")
-    monkeypatch.setenv("CANVAS_API_URL", "https://canvas.test.local")
     monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    monkeypatch.setenv("CANVAS_API_URL", "https://canvas.test.local")
 
 
 @pytest.fixture(autouse=True)

@@ -1,8 +1,8 @@
 """Canvas OAuth2 token exchange, refresh, and session storage helpers.
 
 Keeps the per-professor token lifecycle out of the route handlers so
-`app/routers/oauth.py` stays thin (see .cursor/rules/02-python-app.mdc).
-The refresh token and expiry live in the encrypted session only -- never logged.
+`app/routers/oauth.py` stays thin. The refresh token and expiry live in the
+encrypted session only -- never logged.
 """
 
 from __future__ import annotations
@@ -118,6 +118,25 @@ def clear_tokens(request: Request) -> None:
     request.session.pop("canvas_user_token", None)
     request.session.pop("canvas_refresh_token", None)
     request.session.pop("canvas_token_expires_at", None)
+
+
+def fetch_users_self(access_token: str) -> dict:
+    """Return ``GET /api/v1/users/self`` for the given user access token."""
+    url = f"{config.CANVAS_API_URL.rstrip('/')}/api/v1/users/self"
+    response = requests.get(
+        url,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            **_token_request_headers(),
+        },
+        timeout=30,
+    )
+    if not response.ok:
+        logger.warning(
+            "users/self failed: %s %s", response.status_code, response.text[:300]
+        )
+        response.raise_for_status()
+    return response.json()
 
 
 def _token_is_expiring(request: Request) -> bool:

@@ -132,6 +132,9 @@ function initPanelSplitter() {
 }
 
 function switchView(view) {
+    if (view !== "feedback-review" && typeof saveFeedbackWorkspaceDraft === "function" && currentFeedbackData) {
+        saveFeedbackWorkspaceDraft().catch(() => {});
+    }
     document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
     document.getElementById(`view-${view}`).classList.add("active");
     document.querySelectorAll(".nav-item").forEach(n => {

@@ -1,5 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="EasyLearn">
   <rect width="64" height="64" rx="8" fill="#394B58"/>
-  <path fill="#FFFFFF" d="M32 14 54 25 32 36 10 25Z"/>
-  <path fill="#FFFFFF" d="M18 28h28v8H18z"/>
+  <!-- FA-style mortarboard (favicon only; sidebar uses fa-graduation-cap) -->
+  <g fill="#FFFFFF" transform="translate(10 14) scale(0.06875)">
+    <path d="M320 32L0 160l32 13.3V352c0 17.7 14.3 32 32 32s32-14.3 32-32V214.7L192 256v160c0 8.8 7.2 16 16 16h64c8.8 0 16-7.2 16-16V256l128-53.3V352c0 17.7 14.3 32 32 32s32-14.3 32-32V173.3L640 160 320 32z"/>
+  </g>
 </svg>

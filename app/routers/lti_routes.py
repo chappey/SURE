@@ -9,10 +9,9 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pylti1p3.contrib.fastapi import FastAPILTIRequest
 
 from app import config
-from app.canvas_ids import extract_course_id_from_lti_launch
 from app.lti import EasyLearnOIDCLogin
-from app.lti_claims import extract_lti_user_fields
 from app.lti_config import tool_conf
+from app.session_identity import apply_lti_launch_to_session
 
 logger = logging.getLogger("easylearn")
 router = APIRouter(tags=["lti"])
@@ -97,33 +96,14 @@ async def lti_launch(request: Request) -> RedirectResponse:
             )
 
         try:
-            request.session["lti_launched"] = True
-            user_fields = extract_lti_user_fields(launch_data)
-            if user_fields.get("user_name"):
-                request.session["user_name"] = user_fields["user_name"]
-            if user_fields.get("user_email"):
-                request.session["user_email"] = user_fields["user_email"]
-            if user_fields.get("user_role"):
-                request.session["user_role"] = user_fields["user_role"]
-            if user_fields.get("lti_sub"):
-                request.session["lti_sub"] = user_fields["lti_sub"]
-
-            course_id = extract_course_id_from_lti_launch(launch_data)
-            if course_id is not None:
-                request.session["canvas_course_id"] = str(course_id)
-                logger.info(
-                    "LTI launch: user=%r course_id=%s sub=%r host=%s",
-                    request.session.get("user_name"),
-                    course_id,
-                    request.session.get("lti_sub"),
-                    request.url.hostname,
-                )
-            else:
-                logger.warning("LTI launch: no course id in launch claims")
-
-            context = launch_data.get("https://purl.imsglobal.org/spec/lti/claim/context", {})
-            if context.get("title"):
-                request.session["course_name"] = context.get("title")
+            apply_lti_launch_to_session(request, launch_data)
+            logger.info(
+                "LTI launch bound: user=%r course_id=%s sub=%r host=%s",
+                request.session.get("user_name"),
+                request.session.get("canvas_course_id"),
+                request.session.get("lti_sub"),
+                request.url.hostname,
+            )
         except Exception as exc:
             # JWT already validated above; a claim-processing hiccup should not block launch.
             logger.exception("Error processing validated LTI launch claims: %s", exc)

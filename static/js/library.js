@@ -72,14 +72,10 @@ function rowActionsHtml(q, status, hasCanvas, canvasUrl, id, title) {
 
     if (status === "draft") {
         primaryBtn = `<button type="button" class="btn btn-primary btn-sm" onclick="loadDraft('${escapeAttr(id)}')">Edit</button>`;
+    } else if (hasCanvas) {
+        primaryBtn = `<button type="button" class="btn btn-primary btn-sm" onclick="loadFeedbackWorkspace('${escapeAttr(id)}')"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate feedback</button>`;
     } else {
-        if (q.submission_count && q.submission_count > 0) {
-            primaryBtn = `<button type="button" class="btn btn-primary btn-sm" onclick="loadFeedbackWorkspace('${escapeAttr(id)}')"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate feedback</button>`;
-        } else if (hasCanvas && canvasUrl) {
-            primaryBtn = `<a href="${escapeAttr(canvasUrl)}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration: none;"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open in Canvas</a>`;
-        } else {
-            primaryBtn = `<button type="button" class="btn btn-secondary btn-sm" onclick="loadDraft('${escapeAttr(id)}')">Edit</button>`;
-        }
+        primaryBtn = `<button type="button" class="btn btn-secondary btn-sm" onclick="loadDraft('${escapeAttr(id)}')">Edit</button>`;
     }
 
     const menuTriggerBtn = `<button type="button" class="action-icon-btn" onclick="openGlobalQuizMenu(event, '${escapeAttr(id)}')" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>`;

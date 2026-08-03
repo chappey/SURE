@@ -1,34 +1,22 @@
 # AGENTS.md — EasyLearn
 
-Guide for humans and AI agents working in this repository.
+Context for humans and AI agents working in this repository.
 
 ## What this is
 
-**EasyLearn** is an LTI 1.3 web app that generates structured quizzes from Canvas course materials (PDF/PPTX) using Google Gemini or OpenRouter, then deploys them back to Canvas. Most behavior is tied to Canvas auth, course context, and the LTI launch flow.
+EasyLearn is an LTI 1.3 web app. College professors launch it from Canvas,
+authorize via per-professor OAuth, select course materials (PDF/PPTX), generate
+structured quizzes with Gemini or OpenRouter, and deploy the quizzes back into
+Canvas. The RAG/OCR extraction pipeline is intentionally retained.
 
-## Repo map
+## Layout
 
-| Path | Purpose |
-|------|---------|
-| `main.py` | FastAPI entrypoint, middleware, health endpoints (`/healthz`, `/readyz`) |
-| `app/routers/` | Route modules (`api`, `oauth`, `lti_routes`, `pages`) |
-| `app/dependencies.py` | FastAPI `Depends()` helpers for course ID and Canvas client |
-| `app/` | Application logic (Canvas API, LTI adapter, quiz generation, storage) |
-| `app/config.py` | All environment variables — single source of truth |
-| `app/lti.py` | FastAPI adapter for `pylti1p3` |
-| `app/schemas.py` | Pydantic models (`WeeklyQuiz`, `GeneratedQuestion`, etc.) |
-| `config/lti_config.json` | LTI tool registration (copy from `lti_config.example.json`) |
-| `docker-compose.yml` | Production Docker Compose deployment |
-| `Dockerfile` | Container image |
-| `keys/` | RSA keypair for LTI signing (gitignored) |
-| `cache/` | Downloaded files and quiz drafts (gitignored) |
-| `templates/` | Dashboard HTML templates |
-| `static/` | Static CSS/JS assets and logo |
-| `app/agentic_feedback.py` | Batched LLM feedback generation for quiz submissions |
-| `app/quizzes_service.py` | Quiz overview, Canvas stats sync, feedback processing |
-| `utils/` | System configuration tools (`configure_lti.py`, `configure_oauth.py`) |
-| `tests/` | Pytest suite (Tier-1 unit tests, 129 tests across 4 modules) |
-| `docs/` | DevOps Deployment Guide (`deployment.md`) |
+- `main.py` — FastAPI entrypoint, middleware, health endpoints.
+- `app/` — all business logic. Routers in `app/routers/` stay thin; logic lives in `app/*`.
+- `app/config.py` — every environment variable. Single source of truth.
+- `utils/` — one-off setup tools (LTI/OAuth config). Not importable app code.
+- `tests/` — pytest unit tests for pure logic. (Instance-specific and PII-bearing tests live outside this repo.)
+- `config/`, `keys/`, `cache/`, `templates/`, `static/`, `docs/` — config, LTI keys, file cache, HTML, assets, deployment docs.
 
 ## Dev workflow
 
@@ -37,27 +25,20 @@ cp .env.example .env
 cp config/lti_config.example.json config/lti_config.json
 uv sync
 uv run --no-sync utils/configure_oauth.py --write-env
-docker compose up -d --build
+docker compose up -d --build      # or: uv run --no-sync main.py
 ```
 
-Bare-metal: `uv run --no-sync main.py` after the same `.env` setup.
+Run tests: `uv run --no-sync python -m pytest`
 
-Run tests: `uv run --no-sync pytest` (129 Tier-1 tests, no external services needed)
+## Rules
 
-- Python >= 3.14, dependencies via **`uv`** only.
-- Never commit `.env`, `keys/*.key`, or `cache/` contents.
+- Python >= 3.14; manage deps with `uv` only. Always `uv run --no-sync` — never `python3` or `.venv/bin/python` (the flag avoids costly re-syncs).
+- Never commit `.env`, `keys/*.key`, or `cache/`. Grep diffs before merge.
 - `CANVAS_API_TOKEN` is CLI-only; the web app uses LTI + per-professor OAuth.
-- **Always use `uv run --no-sync`** for all Python commands. Never call `python3` or `.venv/bin/python` directly. The `--no-sync` flag uses the existing venv without triggering costly full re-syncs.
-
-## Agent guardrails
-
-- Extend logic in `app/`, not a resurrected `scripts/` package.
-- Keep routes thin in `main.py`; put business logic in `app/*`.
-- New env vars → `app/config.py` + `.env.example`.
+- New env var → add to `app/config.py` and `.env.example`.
 - Do not log tokens, OAuth codes, or extracted course text.
 - Do not disable LTI/OAuth validation or CSRF checks.
-- Do not commit secrets — grep diffs before merge.
-- Always run static syntax checks after JS changes (`node -c static/js/*.js`) and Python edits (`uv run --no-sync python -m py_compile ...`) before claiming task completion.
+- After edits, run syntax checks before claiming done: `uv run --no-sync python -m py_compile <files>` (Python) and `node -c static/js/*.js` (JS).
 
 ## LTI endpoints (do not rename casually)
 
@@ -72,4 +53,4 @@ Canvas Developer Key URLs must match the deployed host exactly when going live.
 
 ## Deploy
 
-Primary path: [docker-compose.yml](./docker-compose.yml) + [docs/deployment.md](./docs/deployment.md).
+`docker-compose.yml` + `docs/deployment.md`.

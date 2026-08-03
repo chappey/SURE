@@ -100,6 +100,57 @@ def fetch_quiz_questions(course, canvas_quiz_id: int) -> list[dict[str, Any]]:
     return results
 
 
+def fetch_quiz_answer_maps(course, canvas_quiz_id: int) -> dict[int, dict[str, str]]:
+    """Map each Canvas question id to ``{answer_id_str: answer_label}``.
+
+    Classic Quizzes store the chosen multiple-choice option as an answer id in
+    ``submission_data.text``; this lookup turns those ids into readable labels.
+    """
+    quiz = course.get_quiz(canvas_quiz_id)
+    maps: dict[int, dict[str, str]] = {}
+    for q in quiz.get_questions():
+        qid = getattr(q, "id", None)
+        if qid is None:
+            continue
+        answer_map: dict[str, str] = {}
+        for a in getattr(q, "answers", None) or []:
+            if isinstance(a, dict):
+                aid = a.get("id")
+                label = a.get("text") or a.get("answer_text") or ""
+            else:
+                aid = getattr(a, "id", None)
+                label = getattr(a, "text", None) or getattr(a, "answer_text", None) or ""
+            if aid is None:
+                continue
+            answer_map[str(aid)] = str(label).strip()
+        maps[int(qid)] = answer_map
+    return maps
+
+
+def fetch_course_user_names(course) -> dict[int, str]:
+    """Return ``user_id → display name`` for users visible in the course."""
+    names: dict[int, str] = {}
+    try:
+        users = course.get_users(per_page=100)
+    except TypeError:
+        users = course.get_users()
+    for user in users:
+        uid = getattr(user, "id", None)
+        if uid is None:
+            continue
+        name = (
+            getattr(user, "name", None)
+            or getattr(user, "sortable_name", None)
+            or getattr(user, "short_name", None)
+            or f"Student #{uid}"
+        )
+        names[int(uid)] = str(name).strip()
+    return names
+
+
+_ELIGIBLE_SUBMISSION_STATES = frozenset({"complete", "graded", "pending_review", None})
+
+
 def fetch_quiz_submissions(course, canvas_quiz_id: int) -> list[dict[str, Any]]:
     """Return quiz submission metadata (no per-question answers — Canvas omits them here)."""
     quiz = course.get_quiz(canvas_quiz_id)
@@ -115,6 +166,15 @@ def fetch_quiz_submissions(course, canvas_quiz_id: int) -> list[dict[str, Any]]:
             }
         )
     return submissions
+
+
+def count_eligible_quiz_submissions(course, canvas_quiz_id: int) -> int:
+    """Count quiz attempts that finished (including pending_review / ungraded essays)."""
+    return sum(
+        1
+        for s in fetch_quiz_submissions(course, canvas_quiz_id)
+        if s.get("workflow_state") in _ELIGIBLE_SUBMISSION_STATES
+    )
 
 
 def _normalize_submission_data(raw: Any) -> list[dict[str, Any]]:

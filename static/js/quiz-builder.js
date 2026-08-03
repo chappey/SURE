@@ -660,7 +660,7 @@ function renderDraftEditor() {
                     <span style="color: var(--text-muted);">${points} ${ptLabel}</span>
                 </div>
             </div>
-            <div class="question-title" id="q-text-${qIndex}">${escapeHtml(q.question_text)}</div>
+            <div class="question-title" id="q-text-${qIndex}">${escapeHtml(htmlToPlainText(q.question_text))}</div>
 
             <div class="answers-list" id="q-answers-list-${qIndex}">
                 ${answersHTML}
@@ -673,7 +673,7 @@ function renderDraftEditor() {
             <div class="editor-form" id="editor-form-${qIndex}" style="display: none;">
                 <div class="form-group">
                     <label>Question text</label>
-                    <textarea id="edit-qtext-${qIndex}" rows="2">${escapeHtml(q.question_text)}</textarea>
+                    <textarea id="edit-qtext-${qIndex}" rows="2">${escapeHtml(htmlToPlainText(q.question_text))}</textarea>
                 </div>
                 <div class="form-group">
                     <label>Answers</label>

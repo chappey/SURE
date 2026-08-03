@@ -12,7 +12,16 @@ from google.genai import errors as genai_errors
 from app import config
 from app.auth import build_session_info
 from app.canvas import download_canvas_file
-from app.canvas_courses import fetch_quiz_submissions_with_answers, list_teacher_courses, publish_canvas_quiz
+from app.canvas_courses import (
+    list_teacher_courses,
+    publish_canvas_quiz,
+)
+from app.feedback_workspace import (
+    build_or_merge_feedback_workspace,
+    filter_content_question_stats,
+    get_saved_workspace_payload,
+    save_feedback_workspace,
+)
 from app.config import CACHE_DIR
 from app.dependencies import (
     CanvasClientDep,
@@ -22,7 +31,13 @@ from app.dependencies import (
     validate_course_access,
 )
 from app.deployment import deploy_quiz_to_canvas, find_module_by_id_or_name
-from app.agentic_feedback import generate_batched_feedback
+from app.agentic_feedback import html_to_plain_text
+from app.feedback_workspace import (
+    build_or_merge_feedback_workspace,
+    filter_content_question_stats,
+    get_saved_workspace_payload,
+    save_feedback_workspace,
+)
 from app.extraction import extract_file_text, is_supported_material
 from app.generation import format_llm_error, generate_weekly_quiz
 from app.llm.catalog import list_models_for_api, resolve_model
@@ -193,7 +208,26 @@ def get_modules(
         course_id,
         "forced refresh" if refresh else "cache miss",
     )
-    course = canvas.get_course(course_id)
+    try:
+        course = canvas.get_course(course_id)
+    except Exception as exc:
+        from canvasapi.exceptions import Forbidden, ResourceDoesNotExist
+
+        if isinstance(exc, Forbidden):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Your Canvas account cannot access course {course_id}. "
+                    "Confirm you are enrolled as a teacher, then re-launch EasyLearn "
+                    "from that course and Authorize again."
+                ),
+            ) from exc
+        if isinstance(exc, ResourceDoesNotExist):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Course {course_id} was not found in Canvas.",
+            ) from exc
+        raise
     file_map: dict[int, str] = {}
     try:
         for file_obj in course.get_files():
@@ -311,6 +345,8 @@ def api_generate_quiz(
         quiz_dict["includes_answer_feedback"] = include_answer_feedback
         quiz_dict["includes_agentic_feedback"] = body.include_agentic_feedback
         quiz_dict["module_id"] = body.module_id
+        quiz_dict["file_ids"] = list(body.file_ids)
+        quiz_dict["source_text"] = combined_text
         quiz_dict["model_id"] = model_entry.id
         quiz_dict["model_label"] = model_entry.label
         save_quiz_draft(
@@ -448,7 +484,7 @@ def get_quiz_stats_endpoint(
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
 ) -> dict:
-    """Return Canvas quiz statistics for a deployed quiz."""
+    """Return Canvas quiz statistics for a deployed quiz (content questions only)."""
     draft = get_quiz_draft(course_id, quiz_id)
     if not draft:
         raise HTTPException(status_code=404, detail="Quiz draft not found.")
@@ -457,7 +493,62 @@ def get_quiz_stats_endpoint(
         raise HTTPException(status_code=400, detail="Quiz has not been deployed to Canvas.")
 
     course = canvas.get_course(course_id)
-    return get_quiz_stats(course, canvas, course_id, int(canvas_quiz_id))
+    stats = get_quiz_stats(course, canvas, course_id, int(canvas_quiz_id))
+    if stats.get("available") and stats.get("questions"):
+        content_qs = filter_content_question_stats(stats["questions"], draft)
+        content_ids = {
+            int(r["content_canvas_id"]): i
+            for i, r in enumerate((draft.get("agentic_feedback") or {}).get("questions") or [])
+            if r.get("content_canvas_id") is not None
+        }
+        draft_qs = draft.get("questions") or []
+        for q in content_qs:
+            try:
+                qid = int(q.get("id"))
+            except (TypeError, ValueError):
+                qid = None
+            idx = content_ids.get(qid) if qid is not None else None
+            if idx is not None and idx < len(draft_qs):
+                q["question_text"] = html_to_plain_text(draft_qs[idx].get("question_text") or "")
+                q["question_name"] = draft_qs[idx].get("question_name") or q.get("question_name") or ""
+            else:
+                q["question_text"] = html_to_plain_text(q.get("question_text") or "")
+        stats["questions"] = content_qs
+    stats["has_feedback_workspace"] = bool(
+        (draft.get("feedback_workspace") or {}).get("submissions")
+    )
+    processed = draft.get("agentic_feedback_processed") or {}
+    stats["feedback_done"] = len(processed) if isinstance(processed, dict) else 0
+
+    # Extract misconception metrics from feedback workspace if present
+    misconception_matrix = {
+        "high_confidence_wrong": 0,
+        "high_confidence_correct": 0,
+        "low_confidence_wrong": 0,
+        "low_confidence_correct": 0,
+        "total_responses": 0,
+    }
+    workspace = draft.get("feedback_workspace") or {}
+    for sub in workspace.get("submissions") or []:
+        for q_item in sub.get("questions") or []:
+            conf = str(q_item.get("confidence") or "").lower().strip()
+            is_corr = bool(q_item.get("is_correct"))
+            if not conf:
+                continue
+            misconception_matrix["total_responses"] += 1
+            is_high = conf in ("high", "5", "4", "very high", "confident")
+            if is_high and not is_corr:
+                misconception_matrix["high_confidence_wrong"] += 1
+            elif is_high and is_corr:
+                misconception_matrix["high_confidence_correct"] += 1
+            elif not is_high and not is_corr:
+                misconception_matrix["low_confidence_wrong"] += 1
+            else:
+                misconception_matrix["low_confidence_correct"] += 1
+
+    stats["misconception_matrix"] = misconception_matrix
+    return stats
+
 
 
 @router.post("/quizzes/{quiz_id}/agentic-feedback/process")
@@ -486,7 +577,6 @@ def process_agentic_feedback_endpoint(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    # Final persist (checkpoints may have already written progress)
     update_quiz_draft(
         course_id=course_id,
         quiz_id=quiz_id,
@@ -526,95 +616,87 @@ def undeploy_quiz_endpoint(
     return {"status": "success", "deployed": False}
 
 
+class PreviewFeedbackRequest(BaseModel):
+    force: bool = False
+
+
+class SaveWorkspaceRequest(BaseModel):
+    submissions: list[dict] = []
+
+
+@router.get("/quizzes/{quiz_id}/agentic-feedback/workspace")
+def get_feedback_workspace_endpoint(
+    course_id: CourseIdDep,
+    quiz_id: str,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> dict:
+    """Return the saved Feedback Review workspace without calling the LLM."""
+    draft = get_quiz_draft(course_id, quiz_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Quiz draft not found.")
+    payload = get_saved_workspace_payload(quiz_id, draft)
+    if not payload:
+        return {
+            "quiz_id": quiz_id,
+            "quiz_title": draft.get("quiz_title", "Quiz Feedback Review"),
+            "submissions": [],
+            "questions": draft.get("questions") or [],
+            "source_available": bool((draft.get("source_text") or "").strip()),
+            "empty": True,
+        }
+    return payload
+
+
 @router.post("/quizzes/{quiz_id}/agentic-feedback/preview")
 def preview_agentic_feedback_endpoint(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
     quiz_id: str,
+    request: Request,
+    body: PreviewFeedbackRequest,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
 ) -> dict:
-    """Generate student submission feedback preview for instructor review."""
+    """Build or merge Feedback Review workspace (LLM only for new/forced rows)."""
     draft = get_quiz_draft(course_id, quiz_id)
     if not draft:
         raise HTTPException(status_code=404, detail="Quiz draft not found.")
 
-    canvas_quiz_id = draft.get("canvas_quiz_id") or draft.get("quiz_id")
-    if not canvas_quiz_id:
-        raise HTTPException(status_code=400, detail="Quiz has not been deployed to Canvas.")
-
     course = canvas.get_course(course_id)
-    submissions = fetch_quiz_submissions_with_answers(course, int(canvas_quiz_id))
-    content_questions = draft.get("questions") or []
-    mapping = (draft.get("agentic_feedback") or {}).get("questions") or []
+    try:
+        return build_or_merge_feedback_workspace(
+            course,
+            course_id,
+            quiz_id,
+            draft,
+            force=bool(body.force),
+            created_by=request.session.get("user_name", "Instructor"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    feedback_items = generate_batched_feedback(
-        content_questions=content_questions,
-        submissions=submissions,
-        mapping=mapping,
-        model_id=draft.get("model_id"),
+
+@router.put("/quizzes/{quiz_id}/agentic-feedback/workspace")
+def save_feedback_workspace_endpoint(
+    course_id: CourseIdDep,
+    quiz_id: str,
+    body: SaveWorkspaceRequest,
+    request: Request,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> dict:
+    """Autosave professor edits to the Feedback Review workspace."""
+    draft = get_quiz_draft(course_id, quiz_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Quiz draft not found.")
+    return save_feedback_workspace(
+        course_id,
+        quiz_id,
+        draft,
+        body.submissions or [],
+        created_by=request.session.get("user_name", "Instructor"),
     )
-
-    feedback_lookup: dict[tuple[int, int], str] = {}
-    for item in feedback_items:
-        feedback_lookup[(item.submission_id, item.question_index)] = item.feedback
-
-    from app.agentic_feedback import _answer_by_question_id, _is_correct, _response_text
-
-    parsed_subs = []
-    for sub in submissions:
-        sub_id = sub.get("id")
-        user_id = sub.get("user_id")
-        by_id = _answer_by_question_id(sub.get("submission_data") or [])
-
-        q_list = []
-        for q_idx, q_item in enumerate(content_questions):
-            row = next((r for r in mapping if r.get("content_index") == q_idx), None)
-
-            if row:
-                content_canvas_id = row.get("content_canvas_id")
-                conf_canvas_id = row.get("confidence_canvas_id")
-                expl_canvas_id = row.get("explanation_canvas_id")
-
-                content_item = by_id.get(int(content_canvas_id)) if content_canvas_id else None
-                student_answer = _response_text(content_item)
-                is_correct = _is_correct(content_item, q_item)
-                confidence = _response_text(by_id.get(int(conf_canvas_id))) if conf_canvas_id else ""
-                explanation = _response_text(by_id.get(int(expl_canvas_id))) if expl_canvas_id else ""
-            else:
-                student_answer = ""
-                confidence = ""
-                explanation = ""
-                is_correct = False
-
-            ai_feedback = feedback_lookup.get((sub_id, q_idx + 1), "")
-
-            q_list.append({
-                "q_index": q_idx,
-                "question_id": q_item.get("id", q_idx),
-                "question_text": q_item.get("question_text", f"Question {q_idx + 1}"),
-                "student_answer": student_answer,
-                "confidence": confidence,
-                "explanation": explanation,
-                "score": 1 if is_correct else 0,
-                "ai_feedback": ai_feedback,
-            })
-
-        parsed_subs.append({
-            "submission_id": sub_id,
-            "user_id": user_id,
-            "user_name": f"Student #{user_id}",
-            "score": sub.get("score"),
-            "questions": q_list,
-        })
-
-    return {
-        "quiz_id": quiz_id,
-        "quiz_title": draft.get("quiz_title", "Quiz Feedback Review"),
-        "canvas_quiz_id": int(canvas_quiz_id),
-        "questions": content_questions,
-        "submissions": parsed_subs,
-    }
 
 
 class ApproveFeedbackRequest(BaseModel):

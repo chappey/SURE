@@ -62,7 +62,7 @@ For full deployment instructions, Canvas LTI 1.3 / OAuth Developer Key setup, an
    uv run main.py
    ```
 
-   The app will run on `http://localhost:8000`. Launch EasyLearn from Canvas course navigation as a instructor.
+   The app will run on `http://localhost:8000`. Launch EasyLearn from Canvas course navigation as an instructor.
 
 ---
 

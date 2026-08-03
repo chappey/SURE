@@ -6,11 +6,13 @@
     <title>EasyLearn</title>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="shortcut icon" href="/static/favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -100,7 +102,7 @@
                         <div class="form-group form-group-tight">
                             <label for="custom-instructions">Custom Guidance / Focus Areas (Optional)</label>
                             <textarea id="custom-instructions" rows="2" class="custom-prompt-input"
-                                placeholder="e.g. Focus on OSI vs TCP/IP layer differences and Big-O costs. Avoid slide count trivia."></textarea>
+                                placeholder=""></textarea>
                         </div>
                         <div class="qmatrix-container">
                             <table class="qmatrix-table">
@@ -217,7 +219,7 @@
         <div id="view-quizzes" class="view-panel">
             <div class="glass-card library-card">
                 <p class="quizzes-intro">
-                    After students submit in Canvas, use <strong>Generate feedback</strong> for personal comments. Open <strong>Results</strong> to see hard questions.
+                    After students submit in Canvas, use <strong>Generate feedback</strong> for personal comments. Open <strong>Results</strong> to see questions students found difficult.
                 </p>
                 <div class="table-scroll">
                     <table class="quiz-table">

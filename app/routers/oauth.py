@@ -12,7 +12,7 @@ from fastapi.responses import RedirectResponse
 
 from app import config
 from app.auth import canvas_oauth_authorize_base, canvas_oauth_redirect_uri, easylearn_url, require_lti_launch
-from app.canvas_oauth import exchange_code_for_token, store_token
+from app.canvas_oauth import exchange_code_for_token, fetch_users_self, store_token
 
 logger = logging.getLogger("easylearn")
 router = APIRouter(prefix="/oauth", tags=["oauth"])
@@ -72,15 +72,33 @@ def oauth_callback(
         if not access_token:
             raise HTTPException(status_code=400, detail="Access token missing in token response.")
 
-        user_info = data.get("user", {})
-        if user_info.get("id"):
-            request.session["canvas_user_id"] = str(user_info["id"])
-        if user_info.get("name"):
-            request.session["user_name"] = user_info["name"]
+        user_info = data.get("user", {}) or {}
+        # Token responses often only include {id}; fill name/email from /users/self.
+        try:
+            profile = fetch_users_self(access_token)
+        except requests.RequestException:
+            profile = {}
+            logger.exception("Could not load Canvas /users/self after OAuth")
+
+        oauth_id = str(profile.get("id") or user_info.get("id") or "")
+        if oauth_id:
+            request.session["canvas_user_id"] = oauth_id
+
+        display_name = (
+            profile.get("name")
+            or user_info.get("name")
+            or profile.get("short_name")
+            or request.session.get("user_name")
+        )
+        if display_name:
+            request.session["user_name"] = display_name
+
+        email = profile.get("email") or profile.get("login_id") or request.session.get("user_email")
+        if email:
+            request.session["user_email"] = email
 
         lti_sub = request.session.get("lti_sub")
-        oauth_id = str(user_info.get("id", ""))
-        if lti_sub and oauth_id and lti_sub != oauth_id:
+        if lti_sub and oauth_id and str(lti_sub) != oauth_id:
             logger.warning(
                 "LTI sub (%s) differs from OAuth user id (%s) — OAuth id used for API calls",
                 lti_sub,

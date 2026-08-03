@@ -1,21 +1,16 @@
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
-from typing import Any
-from unittest.mock import ANY, patch
+from unittest.mock import patch
 
 from app.quizzes_service import (
     _ensure_quiz_url,
     _fetch_canvas_quiz_meta,
     _quiz_status,
-    _read_ttl_cache,
     build_quizzes_overview,
-    get_cached_stats,
     get_quiz_stats,
     process_agentic_feedback,
-    save_stats_cache,
 )
 
 
@@ -33,43 +28,8 @@ class TestQuizStatus:
         assert _quiz_status(deployed=False, published=True) == "published"
 
 
-class TestReadTtlCache:
-    def test_missing_file_returns_none(self, tmp_path: Path):
-        path = tmp_path / "nonexistent.json"
-        assert _read_ttl_cache(path, ttl_seconds=60) is None
-
-    def test_expired_file_returns_none(self, tmp_path: Path):
-        path = tmp_path / "old.json"
-        path.write_text('{"key": "value"}')
-        time.sleep(0.01)
-        assert _read_ttl_cache(path, ttl_seconds=0.001) is None
-
-    def test_valid_file_returns_data(self, tmp_path: Path):
-        path = tmp_path / "fresh.json"
-        path.write_text('{"key": "value"}')
-        result = _read_ttl_cache(path, ttl_seconds=60)
-        assert result == {"key": "value"}
-
-    def test_corrupted_file_returns_none(self, tmp_path: Path):
-        path = tmp_path / "corrupt.json"
-        path.write_text("not json")
-        assert _read_ttl_cache(path, ttl_seconds=60) is None
-
-
-class TestGetCachedStats:
-    def test_returns_none_when_no_cache(self, tmp_path: Path):
-        assert get_cached_stats(1, 42) is None
-
-    def test_returns_cached_data(self, tmp_path: Path):
-        save_stats_cache(1, 42, {"available": True, "submission_count": 5})
-        result = get_cached_stats(1, 42)
-        assert result is not None
-        assert result["available"] is True
-        assert result["submission_count"] == 5
-
-
 class TestFetchCanvasQuizMeta:
-    def test_caches_meta(self, tmp_path: Path):
+    def test_fetches_live_meta(self):
         class FakeQuiz:
             published = True
             question_count = 10
@@ -78,11 +38,10 @@ class TestFetchCanvasQuizMeta:
             def get_quiz(self, quiz_id):
                 return FakeQuiz()
 
-        course = FakeCourse()
-        meta = _fetch_canvas_quiz_meta(course, 1, 42)
+        meta = _fetch_canvas_quiz_meta(FakeCourse(), 42)
         assert meta == {"published": True, "question_count": 10}
 
-    def test_uses_cache_on_second_call(self, tmp_path: Path):
+    def test_always_hits_canvas(self):
         call_count = 0
 
         class FakeQuiz:
@@ -96,16 +55,44 @@ class TestFetchCanvasQuizMeta:
                 return FakeQuiz()
 
         course = FakeCourse()
-        _fetch_canvas_quiz_meta(course, 1, 42)
-        _fetch_canvas_quiz_meta(course, 1, 42)
-        assert call_count == 1
+        _fetch_canvas_quiz_meta(course, 42)
+        _fetch_canvas_quiz_meta(course, 42)
+        assert call_count == 2
 
 
 class TestGetQuizStats:
-    def test_uses_cache_first(self, tmp_path: Path):
-        save_stats_cache(1, 42, {"available": True, "submission_count": 5})
-        result = get_quiz_stats(None, None, 1, 42)
-        assert result["submission_count"] == 5
+    @patch("app.quizzes_service.fetch_quiz_statistics")
+    @patch("app.quizzes_service.count_eligible_quiz_submissions")
+    def test_submission_count_from_submissions_not_stats(
+        self, mock_count, mock_fetch_stats
+    ):
+        mock_count.return_value = 1
+        mock_fetch_stats.return_value = {
+            "quiz_statistics": [
+                {
+                    "generated_at": "2026-07-29T15:00:00Z",
+                    "submission_statistics": {"unique_count": 0},
+                    "question_statistics": [],
+                }
+            ]
+        }
+        result = get_quiz_stats("course", "canvas", 1, 42)
+        assert result["available"] is True
+        assert result["submission_count"] == 1
+        mock_count.assert_called_once_with("course", 42)
+
+    @patch("app.quizzes_service.fetch_quiz_statistics", return_value=None)
+    @patch("app.quizzes_service.count_eligible_quiz_submissions", return_value=2)
+    def test_available_when_statistics_fail(self, mock_count, mock_fetch_stats):
+        result = get_quiz_stats("course", "canvas", 1, 42)
+        assert result["available"] is True
+        assert result["submission_count"] == 2
+        assert result["questions"] == []
+
+    @patch("app.quizzes_service.count_eligible_quiz_submissions", side_effect=RuntimeError("boom"))
+    def test_unavailable_when_submission_count_fails(self, mock_count):
+        result = get_quiz_stats("course", "canvas", 1, 42)
+        assert result == {"canvas_quiz_id": 42, "available": False}
 
 
 class TestEnsureQuizUrl:
@@ -152,6 +139,7 @@ class TestProcessAgenticFeedback:
         with pytest.raises(ValueError, match="not been deployed"):
             process_agentic_feedback(course=None, course_id=1, draft=draft)
 
+    @patch("app.quizzes_service.fetch_quiz_answer_maps", return_value={})
     @patch("app.quizzes_service.fetch_quiz_submissions_with_answers")
     @patch("app.quizzes_service.generate_batched_feedback")
     @patch("app.quizzes_service.update_quiz_submission_comments")
@@ -162,6 +150,7 @@ class TestProcessAgenticFeedback:
         mock_update_comments,
         mock_generate,
         mock_fetch_subs,
+        mock_answer_maps,
         sample_draft,
         sample_submissions,
         sample_batch_feedback_items,
@@ -182,6 +171,7 @@ class TestProcessAgenticFeedback:
         assert mock_update_comments.call_count == 2
         assert mock_update_draft.called
 
+    @patch("app.quizzes_service.fetch_quiz_answer_maps", return_value={})
     @patch("app.quizzes_service.fetch_quiz_submissions_with_answers")
     @patch("app.quizzes_service.generate_batched_feedback")
     @patch("app.quizzes_service.update_quiz_submission_comments")
@@ -192,6 +182,7 @@ class TestProcessAgenticFeedback:
         mock_update_comments,
         mock_generate,
         mock_fetch_subs,
+        mock_answer_maps,
         sample_draft,
         sample_submissions,
         sample_batch_feedback_items,
@@ -211,6 +202,7 @@ class TestProcessAgenticFeedback:
         assert result["skipped"] == 1
         assert result["processed"] == 1
 
+    @patch("app.quizzes_service.fetch_quiz_answer_maps", return_value={})
     @patch("app.quizzes_service.fetch_quiz_submissions_with_answers")
     @patch("app.quizzes_service.generate_batched_feedback")
     @patch("app.quizzes_service.update_quiz_submission_comments")
@@ -221,6 +213,7 @@ class TestProcessAgenticFeedback:
         mock_update_comments,
         mock_generate,
         mock_fetch_subs,
+        mock_answer_maps,
         sample_draft,
         sample_submissions,
         sample_batch_feedback_items,
@@ -241,10 +234,12 @@ class TestProcessAgenticFeedback:
         assert result["skipped"] == 0
         assert result["processed"] == 2
 
+    @patch("app.quizzes_service.fetch_quiz_answer_maps", return_value={})
     @patch("app.quizzes_service.fetch_quiz_submissions_with_answers")
     def test_max_submissions_cap(
         self,
         mock_fetch_subs,
+        mock_answer_maps,
         sample_draft,
         sample_submissions,
     ):
@@ -261,12 +256,14 @@ class TestProcessAgenticFeedback:
                 assert result["processed"] == 0
                 assert result["eligible"] == 2
 
+    @patch("app.quizzes_service.fetch_quiz_answer_maps", return_value={})
     @patch("app.quizzes_service.fetch_quiz_submissions_with_answers")
     @patch("app.quizzes_service.generate_batched_feedback")
     def test_errors_collected(
         self,
         mock_generate,
         mock_fetch_subs,
+        mock_answer_maps,
         sample_draft,
         sample_submissions,
     ):
