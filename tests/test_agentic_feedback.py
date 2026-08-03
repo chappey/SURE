@@ -314,7 +314,7 @@ class TestBuildBatchedFeedbackPrompt:
 
     def test_contains_rules(self, sample_content_questions, sample_mapping, sample_submissions):
         result = build_batched_feedback_prompt(sample_content_questions, sample_submissions, sample_mapping)
-        assert "Calibrate tone" in result
+        assert "CONFIDENCE CALIBRATION" in result
 
     def test_includes_source_material(self, sample_content_questions, sample_mapping, sample_submissions):
         result = build_batched_feedback_prompt(
