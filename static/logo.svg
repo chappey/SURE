@@ -1,7 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="EasyLearn">
-  <rect width="64" height="64" rx="8" fill="#394B58"/>
-  <!-- FA-style mortarboard (favicon only; sidebar uses fa-graduation-cap) -->
-  <g fill="#FFFFFF" transform="translate(10 14) scale(0.06875)">
-    <path d="M320 32L0 160l32 13.3V352c0 17.7 14.3 32 32 32s32-14.3 32-32V214.7L192 256v160c0 8.8 7.2 16 16 16h64c8.8 0 16-7.2 16-16V256l128-53.3V352c0 17.7 14.3 32 32 32s32-14.3 32-32V173.3L640 160 320 32z"/>
+  <rect width="64" height="64" rx="14" fill="#394B58"/>
+  <g fill="#FFFFFF">
+    <!-- Mortarboard Diamond Top -->
+    <polygon points="32,12 57,24 32,36 7,24"/>
+    <!-- Skull Cap Base -->
+    <path d="M18,31 H46 V40 C46,43 33.4,45 32,45 C30.6,45 18,43 18,40 Z"/>
+    <!-- Left Tassel -->
+    <path d="M11,26 L15,28 V43 H11 Z"/>
+    <circle cx="13" cy="43.5" r="3.5"/>
   </g>
+  <!-- Top Center Button -->
+  <circle cx="32" cy="24" r="2" fill="#394B58"/>
 </svg>
