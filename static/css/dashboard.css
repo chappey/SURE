@@ -737,7 +737,10 @@ label {
 }
 
 .icon-btn.is-spinning i {
-    animation: spin 0.8s linear infinite;
+    display: inline-block !important;
+    transform-origin: center center !important;
+    animation: easylearn-spin 0.8s linear infinite !important;
+    will-change: transform;
 }
 
 .source-status {
@@ -780,7 +783,9 @@ label {
     border: 2px solid var(--border-light);
     border-top-color: var(--brand-primary);
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    transform-origin: center center !important;
+    animation: easylearn-spin 0.8s linear infinite !important;
+    will-change: transform;
     pointer-events: none;
 }
 
@@ -1237,26 +1242,36 @@ input[type="range"] {
 }
 
 .loader-spinner {
+    display: block;
     width: 48px;
     height: 48px;
     border: 3px solid var(--border-light);
     border-top-color: var(--brand-primary);
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    transform-origin: center center !important;
+    animation: easylearn-spin 0.8s linear infinite !important;
+    will-change: transform;
     margin-bottom: 1.5rem;
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 @keyframes easylearn-spin {
-    to { transform: rotate(360deg); }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
-/* Beat Font Awesome's .fa-spin (loaded before this file) so icons actually rotate. */
-.fa-spin {
+/* Beat Font Awesome's .fa-spin so icons actually rotate regardless of inline display defaults */
+.fa-spin,
+.fa-spinner,
+i.fa-spin {
+    display: inline-block !important;
+    transform-origin: center center !important;
     animation: easylearn-spin 0.8s linear infinite !important;
+    will-change: transform;
 }
 
 @media (prefers-reduced-motion: reduce) {
