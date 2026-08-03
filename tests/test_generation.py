@@ -66,6 +66,21 @@ class TestBuildPrompt:
         assert "correct_comments" in prompt
         assert "incorrect_comments" in prompt
 
+    def test_contains_difficulty_distribution(self):
+        prompt = _build_prompt(
+            week_name="Test",
+            material_text="Content.",
+            num_mc=2,
+            num_tf=1,
+            num_matching=0,
+            mc_options=4,
+            matching_pairs=4,
+            include_answer_feedback=False,
+            difficulty_counts={"easy": 1, "medium": 1, "hard": 1},
+        )
+        assert "1 'easy' questions, 1 'medium' questions, and 1 'hard' questions" in prompt
+        assert "difficulty" in prompt
+
     def test_no_answer_feedback(self):
         prompt = _build_prompt(
             week_name="Test",

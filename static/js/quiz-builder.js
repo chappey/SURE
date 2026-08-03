@@ -238,6 +238,31 @@ function toggleQtype(key) {
     if (toggle) toggle.setAttribute("aria-expanded", String(isHidden));
 }
 
+function onDifficultyInput(changedLevel) {
+    const mc = readCount("count-mc");
+    const tf = readCount("count-tf");
+    const matching = readCount("count-matching");
+    const totalQs = mc + tf + matching;
+
+    let easy = readCount("count-easy");
+    let med = readCount("count-medium");
+    let hard = readCount("count-hard");
+
+    const currentDiffTotal = easy + med + hard;
+    if (currentDiffTotal !== totalQs && totalQs >= 0) {
+        const diff = totalQs - currentDiffTotal;
+        if (changedLevel === "easy" || changedLevel === "hard") {
+            med = Math.max(0, med + diff);
+        } else {
+            easy = Math.max(0, easy + diff);
+        }
+        if (document.getElementById("count-easy")) document.getElementById("count-easy").value = easy;
+        if (document.getElementById("count-medium")) document.getElementById("count-medium").value = med;
+        if (document.getElementById("count-hard")) document.getElementById("count-hard").value = hard;
+    }
+    updateLayoutSummary();
+}
+
 function updateLayoutSummary() {
     const mc = readCount("count-mc");
     const tf = readCount("count-tf");
@@ -247,10 +272,25 @@ function updateLayoutSummary() {
         mc * readPoints("points-mc") +
         tf * readPoints("points-tf") +
         matching * readPoints("points-matching");
+
+    let easy = readCount("count-easy");
+    let med = readCount("count-medium");
+    let hard = readCount("count-hard");
+
+    if (easy + med + hard !== totalQs && totalQs >= 0) {
+        easy = Math.round(totalQs * 0.25);
+        hard = Math.round(totalQs * 0.25);
+        med = Math.max(0, totalQs - easy - hard);
+        if (document.getElementById("count-easy")) document.getElementById("count-easy").value = easy;
+        if (document.getElementById("count-medium")) document.getElementById("count-medium").value = med;
+        if (document.getElementById("count-hard")) document.getElementById("count-hard").value = hard;
+    }
+
     const qLabel = totalQs === 1 ? "question" : "questions";
     const pLabel = totalPoints === 1 ? "point" : "points";
+    const diffStr = totalQs > 0 ? ` (${easy} Easy, ${med} Medium, ${hard} Hard)` : "";
     const el = document.getElementById("layout-summary-text");
-    if (el) el.innerHTML = `${totalQs} ${qLabel} &bull; ${totalPoints} ${pLabel} total`;
+    if (el) el.innerHTML = `${totalQs} ${qLabel}${diffStr} &bull; ${totalPoints} ${pLabel} total`;
 
     // Update Pre-generation summary card in right panel
     const moduleSelect = document.getElementById("module-select");
@@ -278,7 +318,7 @@ function updateLayoutSummary() {
     if (pregenTitle) pregenTitle.textContent = titleVal;
 
     const pregenStruct = document.getElementById("pregen-structure");
-    if (pregenStruct) pregenStruct.innerHTML = `${totalQs} ${qLabel} &bull; ${totalPoints} ${pLabel} total`;
+    if (pregenStruct) pregenStruct.innerHTML = `${totalQs} ${qLabel}${diffStr} &bull; ${totalPoints} ${pLabel} total`;
 
     const pregenModel = document.getElementById("pregen-model");
     if (pregenModel) pregenModel.textContent = selectedModelLabel();
@@ -433,6 +473,11 @@ async function triggerQuizGeneration() {
                 multiple_choice: numMc,
                 true_false: numTf,
                 matching: numMatching
+            },
+            difficulty_counts: {
+                easy: readCount("count-easy"),
+                medium: readCount("count-medium"),
+                hard: readCount("count-hard")
             },
             points_per_type: {
                 multiple_choice: pointsMc,
@@ -646,6 +691,12 @@ function renderDraftEditor() {
             });
         }
 
+        const difficulty = (q.difficulty || "medium").toLowerCase();
+        let diffIcon = "fa-scale-balanced";
+        if (difficulty === "easy") diffIcon = "fa-seedling";
+        if (difficulty === "hard") diffIcon = "fa-fire";
+        const difficultyBadge = `<span class="badge-difficulty ${difficulty}"><i class="fa-solid ${diffIcon}"></i> ${difficulty}</span>`;
+
         const points = q.points_possible || 1;
         const ptLabel = points === 1 ? "pt" : "pts";
         const numberLabel = `<span class="canvas-q-label">Q${qIndex + 1}</span>`;
@@ -655,6 +706,7 @@ function renderDraftEditor() {
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                     ${numberLabel}
                     <span class="type-badge ${typeBadgeClass}">${typeLabel}</span>
+                    ${difficultyBadge}
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.75rem;">
                     <span style="color: var(--text-muted);">${points} ${ptLabel}</span>

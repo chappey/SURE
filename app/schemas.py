@@ -31,6 +31,9 @@ class DraftQuestion(BaseModel):
         "essay_question",
     ]
     points_possible: int = 1
+    difficulty: Literal["easy", "medium", "hard"] = Field(
+        "medium", description="Difficulty level of the question: easy, medium, or hard"
+    )
     answers: list[GeneratedAnswer]
     feedback_enabled: bool = Field(
         True,
@@ -63,6 +66,10 @@ class GenerateQuizRequest(BaseModel):
     quiz_title: str = Field(max_length=200)
     file_ids: list[int] = Field(max_length=50)
     question_types: dict[str, int]
+    difficulty_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Target count per difficulty level: easy, medium, hard",
+    )
     points_per_type: dict[str, int] = Field(default_factory=dict)
     points_per_q: int = Field(default=1, ge=1, le=100)
     mc_options: int = Field(default=4, ge=2, le=10)
@@ -71,6 +78,7 @@ class GenerateQuizRequest(BaseModel):
     include_agentic_feedback: bool = False
     custom_instructions: str = Field(default="", max_length=2000)
     model_id: str | None = None
+
 
 
 class ModelInfo(BaseModel):

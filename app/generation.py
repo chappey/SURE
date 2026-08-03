@@ -27,6 +27,7 @@ def _build_prompt(
     matching_pairs: int,
     include_answer_feedback: bool,
     custom_instructions: str = "",
+    difficulty_counts: dict[str, int] | None = None,
 ) -> str:
     requirements = []
     total_qs = num_mc + num_tf + num_matching
@@ -50,6 +51,20 @@ def _build_prompt(
             f"2) answer_match_left: the left-side text (exactly the same as answer_text), "
             f"3) answer_match_right: the correct matching right-side text. "
             f"Provide at least {matching_pairs} matching pairs per matching question."
+        )
+
+    if difficulty_counts:
+        num_easy = difficulty_counts.get("easy", 0)
+        num_med = difficulty_counts.get("medium", 0)
+        num_hard = difficulty_counts.get("hard", 0)
+        requirements.append(
+            f"- Difficulty distribution: generate exactly {num_easy} 'easy' questions, {num_med} 'medium' questions, and {num_hard} 'hard' questions."
+        )
+        requirements.append(
+            "- Each question MUST specify its 'difficulty' attribute as 'easy', 'medium', or 'hard' matching its intended level:\n"
+            "  * easy: Basic recall of definitions, terminology, or direct facts from the text.\n"
+            "  * medium: Comprehension, application of principles, analyzing mechanism behaviors, or standard tradeoffs.\n"
+            "  * hard: Deep analysis, edge cases, multi-step reasoning, complex algorithm tradeoffs, or subtle distinctions."
         )
 
     if custom_instructions and custom_instructions.strip():
@@ -90,6 +105,7 @@ Grounding rules (non-negotiable):
 Format:
 - question_name: short label (e.g. "Q1: Big-O upper bound").
 - question_text: clear stem (simple HTML like <p> is OK).
+- difficulty: 'easy', 'medium', or 'hard'.
 {feedback_guideline}- quiz_title: concise title like "{week_name} Quiz".
 
 Course material (sole source of truth):
@@ -103,6 +119,7 @@ def generate_weekly_quiz(
     num_mc: int = 5,
     num_tf: int = 0,
     num_matching: int = 0,
+    difficulty_counts: dict[str, int] | None = None,
     points_per_q: int = 1,
     points_by_type: dict[str, int] | None = None,
     mc_options: int = 4,
@@ -131,7 +148,9 @@ def generate_weekly_quiz(
         matching_pairs=matching_pairs,
         include_answer_feedback=include_answer_feedback,
         custom_instructions=custom_instructions,
+        difficulty_counts=difficulty_counts,
     )
+
 
     schema = DraftQuiz.model_json_schema()
     t0 = time.perf_counter()

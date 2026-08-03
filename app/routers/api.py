@@ -328,6 +328,7 @@ def api_generate_quiz(
             num_mc=num_mc,
             num_tf=num_tf,
             num_matching=num_matching,
+            difficulty_counts=body.difficulty_counts,
             points_per_q=body.points_per_q,
             points_by_type=points_by_type,
             mc_options=body.mc_options,
