@@ -46,6 +46,7 @@ def get_dashboard(request: Request) -> Response:
         "js/feedback-reviewer.js",
         "js/quiz-modal.js",
         "js/main.js",
+        "js/profile.js",
         "js/theme-sync.js",
     ]
     for asset in assets:
