@@ -2652,19 +2652,6 @@ i.fa-spin {
     border-radius: 8px;
 }
 
-.profile-settings-icon {
-    font-size: 0.9rem;
-    color: var(--text-muted);
-    margin-left: auto;
-    padding: 0 0.5rem;
-    transition: color 0.15s ease, transform 0.2s ease;
-}
-
-.user-profile:hover .profile-settings-icon {
-    color: var(--brand-primary);
-    transform: rotate(45deg);
-}
-
 /* Generator Memory Active Badge */
 .generator-memory-badge {
     display: inline-flex;
