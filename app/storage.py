@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import tempfile
 import threading
 import time
@@ -195,3 +196,202 @@ def get_cached_modules(course_id: str | int) -> list[dict[str, Any]] | None:
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Could not read modules cache %s: %s", file_path, exc)
         return None
+
+
+# ==============================================================================
+# User Profile & Professor Memory Persistence
+# ==============================================================================
+
+def _sanitize_user_key(user_id: str | int) -> str:
+    """Return a safe filesystem directory name for a user identifier."""
+    sanitized = re.sub(r"[^A-Za-z0-9_.-]", "_", str(user_id)).strip("._")
+    return sanitized or "default_user"
+
+
+def get_user_dir(user_id: str | int) -> Path:
+    """Return the profile directory for a user, creating it if needed."""
+    key = _sanitize_user_key(user_id)
+    path = CACHE_DIR / "users" / key
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _user_profile_path(user_id: str | int) -> Path:
+    return get_user_dir(user_id) / "profile.json"
+
+
+def get_user_profile(
+    user_id: str | int,
+    user_email: str | None = None,
+    user_name: str | None = None,
+) -> dict[str, Any]:
+    """Load or initialize a user profile record."""
+    file_path = _user_profile_path(user_id)
+    with _STORE_LOCK:
+        if file_path.is_file():
+            try:
+                with file_path.open(encoding="utf-8") as f:
+                    data = json.load(f)
+                    changed = False
+                    if user_email and data.get("user_email") != user_email:
+                        data["user_email"] = user_email
+                        changed = True
+                    if user_name and data.get("user_name") != user_name:
+                        data["user_name"] = user_name
+                        changed = True
+                    if changed:
+                        write_json_atomic(file_path, data)
+                    return data
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Could not read user profile %s: %s", file_path, exc)
+
+        now = time.time()
+        default_profile: dict[str, Any] = {
+            "user_id": str(user_id),
+            "user_email": user_email or "",
+            "user_name": user_name or "Instructor",
+            "memory_enabled": True,
+            "global_memories": [],
+            "course_memories": {},
+            "created_at": now,
+            "updated_at": now,
+        }
+        write_json_atomic(file_path, default_profile)
+        return default_profile
+
+
+def save_user_profile(user_id: str | int, profile: dict[str, Any]) -> dict[str, Any]:
+    """Save updated user profile atomically."""
+    with _STORE_LOCK:
+        profile["updated_at"] = time.time()
+        file_path = _user_profile_path(user_id)
+        write_json_atomic(file_path, profile)
+        return profile
+
+
+def add_user_memory(
+    user_id: str | int,
+    text: str,
+    course_id: int | str | None = None,
+) -> dict[str, Any]:
+    """Add a new memory entry either globally or to a specific course."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        raise ValueError("Memory text cannot be empty.")
+
+    memory_item: dict[str, Any] = {
+        "id": f"mem_{secrets.token_hex(6)}",
+        "text": cleaned,
+        "enabled": True,
+        "created_at": time.time(),
+        "course_id": str(course_id) if course_id is not None else None,
+    }
+
+    with _STORE_LOCK:
+        profile = get_user_profile(user_id)
+        if course_id is not None:
+            cid_str = str(course_id)
+            course_mems = profile.setdefault("course_memories", {})
+            mems_list = course_mems.setdefault(cid_str, [])
+            mems_list.append(memory_item)
+        else:
+            profile.setdefault("global_memories", []).append(memory_item)
+
+        save_user_profile(user_id, profile)
+        return memory_item
+
+
+def delete_user_memory(
+    user_id: str | int,
+    memory_id: str,
+    course_id: int | str | None = None,
+) -> bool:
+    """Delete a memory entry by ID."""
+    with _STORE_LOCK:
+        profile = get_user_profile(user_id)
+        deleted = False
+
+        if course_id is not None:
+            cid_str = str(course_id)
+            course_mems = profile.get("course_memories", {})
+            if cid_str in course_mems:
+                orig_len = len(course_mems[cid_str])
+                course_mems[cid_str] = [m for m in course_mems[cid_str] if m.get("id") != memory_id]
+                deleted = len(course_mems[cid_str]) < orig_len
+        else:
+            global_mems = profile.get("global_memories", [])
+            orig_len = len(global_mems)
+            profile["global_memories"] = [m for m in global_mems if m.get("id") != memory_id]
+            deleted = len(profile["global_memories"]) < orig_len
+
+            if not deleted:
+                for cid, mems in profile.get("course_memories", {}).items():
+                    c_orig_len = len(mems)
+                    profile["course_memories"][cid] = [m for m in mems if m.get("id") != memory_id]
+                    if len(profile["course_memories"][cid]) < c_orig_len:
+                        deleted = True
+                        break
+
+        if deleted:
+            save_user_profile(user_id, profile)
+        return deleted
+
+
+def toggle_user_memory(
+    user_id: str | int,
+    memory_id: str,
+    enabled: bool,
+    course_id: int | str | None = None,
+) -> bool:
+    """Toggle the enabled status of a memory."""
+    with _STORE_LOCK:
+        profile = get_user_profile(user_id)
+        found = False
+        all_lists: list[list[dict[str, Any]]] = []
+
+        if course_id is not None:
+            cid_str = str(course_id)
+            if cid_str in profile.get("course_memories", {}):
+                all_lists.append(profile["course_memories"][cid_str])
+        else:
+            all_lists.append(profile.get("global_memories", []))
+            for mems in profile.get("course_memories", {}).values():
+                all_lists.append(mems)
+
+        for mems in all_lists:
+            for m in mems:
+                if m.get("id") == memory_id:
+                    m["enabled"] = enabled
+                    found = True
+                    break
+            if found:
+                break
+
+        if found:
+            save_user_profile(user_id, profile)
+        return found
+
+
+def get_active_memories_for_generation(
+    user_id: str | int,
+    course_id: int | str | None = None,
+) -> list[str]:
+    """Return active preferences formatted as prompt constraint strings."""
+    profile = get_user_profile(user_id)
+    if not profile.get("memory_enabled", True):
+        return []
+
+    active: list[str] = []
+    # Global memories
+    for m in profile.get("global_memories", []):
+        if m.get("enabled", True) and m.get("text"):
+            active.append(m["text"].strip())
+
+    # Course-specific memories
+    if course_id is not None:
+        cid_str = str(course_id)
+        for m in profile.get("course_memories", {}).get(cid_str, []):
+            if m.get("enabled", True) and m.get("text"):
+                active.append(m["text"].strip())
+
+    return active

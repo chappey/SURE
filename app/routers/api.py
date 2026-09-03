@@ -63,13 +63,30 @@ from app.schemas import (
     SwitchCourseRequest,
 )
 from app.storage import (
+    add_user_memory,
+    delete_user_memory,
+    get_active_memories_for_generation,
     get_cached_modules,
     get_quiz_draft,
+    get_user_profile,
     list_quizzes,
     save_course_modules,
     save_quiz_draft,
+    save_user_profile,
+    toggle_user_memory,
     update_quiz_draft,
 )
+
+class UpdateProfileRequest(BaseModel):
+    memory_enabled: bool
+
+class AddMemoryRequest(BaseModel):
+    text: str
+    course_id: int | str | None = None
+
+class ToggleMemoryRequest(BaseModel):
+    enabled: bool
+    course_id: int | str | None = None
 
 logger = logging.getLogger("easylearn")
 router = APIRouter(prefix="/api", tags=["api"])
@@ -333,6 +350,12 @@ def api_generate_quiz(
         generate_jobs.create(job_id)
         ident = ops_context.snapshot()
         created_by = request.session.get("user_name", "Instructor")
+        user_key = (
+            request.session.get("canvas_user_id")
+            or request.session.get("user_email")
+            or "default_user"
+        )
+        active_memories = get_active_memories_for_generation(user_key, course_id)
 
         def _run() -> None:
             generate_jobs.set_running(job_id)
@@ -352,6 +375,7 @@ def api_generate_quiz(
                     include_answer_feedback=include_answer_feedback,
                     custom_instructions=body.custom_instructions,
                     model_id=body.model_id,
+                    professor_memories=active_memories,
                 )
                 if body.quiz_title:
                     quiz.quiz_title = body.quiz_title
@@ -983,4 +1007,87 @@ def publish_quiz_endpoint(
         created_by=request.session.get("user_name", "Instructor"),
     )
     return {"status": "success", "published": True, "canvas_quiz_id": int(canvas_quiz_id)}
+
+
+# ==============================================================================
+# User Profile & Memory API Endpoints
+# ==============================================================================
+
+@router.get("/user/profile")
+def get_user_profile_endpoint(
+    request: Request,
+    _: RequireLtiLaunchDep,
+) -> dict:
+    """Return user profile and active professor memories count."""
+    user_id = request.session.get("canvas_user_id") or request.session.get("user_email") or "default_user"
+    user_email = request.session.get("user_email", "")
+    user_name = request.session.get("user_name", "Instructor")
+    course_id = request.session.get("canvas_course_id")
+    profile = get_user_profile(user_id, user_email=user_email, user_name=user_name)
+    active_mems = get_active_memories_for_generation(user_id, course_id)
+    return {
+        "profile": profile,
+        "active_memories_count": len(active_mems),
+        "current_course_id": course_id,
+        "user_role": request.session.get("user_role", "Teacher"),
+    }
+
+
+@router.put("/user/profile")
+def update_user_profile_endpoint(
+    body: UpdateProfileRequest,
+    request: Request,
+    _: RequireLtiLaunchDep,
+) -> dict:
+    """Update user master memory toggle."""
+    user_id = request.session.get("canvas_user_id") or request.session.get("user_email") or "default_user"
+    profile = get_user_profile(user_id)
+    profile["memory_enabled"] = body.memory_enabled
+    save_user_profile(user_id, profile)
+    return {"status": "success", "profile": profile}
+
+
+@router.post("/user/memories")
+def add_user_memory_endpoint(
+    body: AddMemoryRequest,
+    request: Request,
+    _: RequireLtiLaunchDep,
+) -> dict:
+    """Add a new memory (global or course-specific)."""
+    user_id = request.session.get("canvas_user_id") or request.session.get("user_email") or "default_user"
+    try:
+        item = add_user_memory(user_id, body.text, body.course_id)
+        return {"status": "success", "memory": item}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.put("/user/memories/{memory_id}")
+def toggle_user_memory_endpoint(
+    memory_id: str,
+    body: ToggleMemoryRequest,
+    request: Request,
+    _: RequireLtiLaunchDep,
+) -> dict:
+    """Toggle a specific memory on or off."""
+    user_id = request.session.get("canvas_user_id") or request.session.get("user_email") or "default_user"
+    found = toggle_user_memory(user_id, memory_id, body.enabled, body.course_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Memory not found.")
+    return {"status": "success"}
+
+
+@router.delete("/user/memories/{memory_id}")
+def delete_user_memory_endpoint(
+    memory_id: str,
+    request: Request,
+    course_id: int | str | None = None,
+    _: RequireLtiLaunchDep = None,
+) -> dict:
+    """Delete a specific memory."""
+    user_id = request.session.get("canvas_user_id") or request.session.get("user_email") or "default_user"
+    deleted = delete_user_memory(user_id, memory_id, course_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Memory not found.")
+    return {"status": "success"}
 

@@ -43,12 +43,13 @@
                 </a>
             </li>
         </ul>
-        <div class="user-profile">
+        <div class="user-profile" id="sidebar-user-profile" onclick="openProfileModal()" role="button" tabindex="0" title="Click to open Profile & Memory Settings">
             <div class="avatar">--</div>
             <div class="user-info">
                 <span class="user-name">Loading…</span>
                 <span class="user-role">Checking session…</span>
             </div>
+            <i class="fa-solid fa-gear profile-settings-icon" aria-hidden="true"></i>
         </div>
         <p id="auth-notice" class="auth-notice" hidden></p>
     </aside>
@@ -100,7 +101,14 @@
                             <input type="text" id="quiz-title" value="Week 1 Quiz" placeholder="Quiz title" oninput="updateLayoutSummary()">
                         </div>
                         <div class="form-group form-group-tight">
-                            <label for="custom-instructions">Custom Guidance / Focus Areas (Optional)</label>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                                <label for="custom-instructions" style="margin-bottom: 0;">Custom Guidance / Focus Areas (Optional)</label>
+                                <div id="generator-memory-badge" class="generator-memory-badge" onclick="openProfileModal()" style="display: none;" title="Manage professor style & memory preferences">
+                                    <i class="fa-solid fa-brain"></i>
+                                    <span id="generator-memory-badge-text">0 preferences active</span>
+                                    <span class="badge-manage-link">Manage</span>
+                                </div>
+                            </div>
                             <textarea id="custom-instructions" rows="2" class="custom-prompt-input"
                                 placeholder=""></textarea>
                         </div>
@@ -308,11 +316,80 @@
     <!-- Global Floating Context Menu Portal -->
     <div id="global-quiz-menu" class="global-quiz-menu" style="display: none;"></div>
 
+    <!-- User Profile & Professor Memory Modal -->
+    <div class="modal-overlay" id="profile-modal-overlay" onclick="onProfileOverlayClick(event)" style="display: none;">
+        <div class="modal-dialog modal-dialog-profile" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <div class="profile-modal-avatar" id="profile-modal-avatar">--</div>
+                    <div>
+                        <h4 id="profile-modal-title" style="margin: 0; font-size: 1.15rem;">Professor Profile & Preferences</h4>
+                        <span id="profile-modal-subtitle" style="font-size: 0.8rem; color: var(--text-muted);">Configure your personal teaching style and quiz generation memory</span>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" onclick="closeProfileModal()" aria-label="Close">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body modal-body-profile">
+                <!-- Master Toggle Card -->
+                <div class="memory-master-card">
+                    <div class="master-toggle-info">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fa-solid fa-brain" style="color: var(--brand-primary); font-size: 1.25rem;"></i>
+                            <strong>Personalized Memory & Style Adaptation</strong>
+                        </div>
+                        <p style="margin: 0.25rem 0 0 0; font-size: 0.82rem; color: var(--text-muted);">
+                            When enabled, EasyLearn adapts AI quiz generation to your preferred terminology, phrasing tastes, and content rules.
+                        </p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="master-memory-toggle" onchange="toggleMasterMemory(this.checked)">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+
+                <!-- Scope Tabs -->
+                <div class="memory-scope-tabs">
+                    <button type="button" class="scope-tab active" id="tab-global-memories" onclick="switchMemoryScope('global')">
+                        <i class="fa-solid fa-globe"></i> Global Preferences (All Courses)
+                    </button>
+                    <button type="button" class="scope-tab" id="tab-course-memories" onclick="switchMemoryScope('course')">
+                        <i class="fa-solid fa-book-open"></i> This Course Only (<span id="profile-course-id-label">Course</span>)
+                    </button>
+                </div>
+
+                <!-- Memory Input Form -->
+                <div class="memory-input-card">
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="new-memory-input" class="memory-text-input" placeholder="e.g. Prefer 'trigonal planar' over 'planar' in geometry questions..." onkeydown="if(event.key==='Enter') submitNewMemory()">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="submitNewMemory()">
+                            <i class="fa-solid fa-plus"></i> Add Preference
+                        </button>
+                    </div>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem; display: block;">
+                        Tip: Add explicit terminology preferences, phrasing constraints, or topic emphases.
+                    </span>
+                </div>
+
+                <!-- Memory List Container -->
+                <div class="memory-list-container" id="memory-list-container">
+                    <div class="empty-cell" style="padding: 1.5rem 0;">Loading preferences…</div>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.25rem; border-top: 1px solid var(--border);">
+                <span id="profile-user-footer-label" style="font-size: 0.8rem; color: var(--text-muted);">Logged in as Instructor</span>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="closeProfileModal()">Done</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/util.js"></script>
     <script src="/static/js/quiz-builder.js"></script>
     <script src="/static/js/library.js"></script>
     <script src="/static/js/feedback-reviewer.js"></script>
     <script src="/static/js/quiz-modal.js"></script>
+    <script src="/static/js/profile.js"></script>
     <script src="/static/js/main.js"></script>
     <script src="/static/js/theme-sync.js"></script>
 </body>

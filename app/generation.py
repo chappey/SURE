@@ -31,6 +31,7 @@ def _build_prompt(
     include_answer_feedback: bool,
     custom_instructions: str = "",
     difficulty_counts: dict[str, int] | None = None,
+    professor_memories: list[str] | None = None,
 ) -> str:
     requirements = []
     total_qs = num_mc + num_tf + num_matching
@@ -74,6 +75,14 @@ def _build_prompt(
         requirements.append(
             f"- Instructor specific guidance/focus: {custom_instructions.strip()}"
         )
+
+    if professor_memories:
+        clean_mems = [m.strip() for m in professor_memories if m and m.strip()]
+        if clean_mems:
+            items = "\n".join(f"  * {m}" for m in clean_mems)
+            requirements.append(
+                f"- Professor Tastes, Terminology & Style Preferences (MUST follow strictly):\n{items}"
+            )
 
     req_str = "\n".join(requirements)
 
@@ -119,17 +128,18 @@ Course material (sole source of truth):
 def generate_weekly_quiz(
     week_name: str,
     material_text: str,
-    num_mc: int = 5,
-    num_tf: int = 0,
+    num_mc: int = 4,
+    num_tf: int = 2,
     num_matching: int = 0,
     difficulty_counts: dict[str, int] | None = None,
     points_per_q: int = 1,
     points_by_type: dict[str, int] | None = None,
     mc_options: int = 4,
-    matching_pairs: int = 4,
+    matching_pairs: int = 3,
     include_answer_feedback: bool = False,
     custom_instructions: str = "",
     model_id: str | None = None,
+    professor_memories: list[str] | None = None,
 ) -> tuple[DraftQuiz, ModelEntry]:
     """Generate a quiz using the selected model from the catalog (or auto-select).
 
@@ -151,6 +161,7 @@ def generate_weekly_quiz(
         include_answer_feedback=include_answer_feedback,
         custom_instructions=custom_instructions,
         difficulty_counts=difficulty_counts,
+        professor_memories=professor_memories,
     )
 
 

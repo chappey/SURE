@@ -2637,5 +2637,284 @@ i.fa-spin {
     border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+/* ==========================================================================
+   User Profile & Professor Memory System Styles
+   ========================================================================== */
+
+.user-profile {
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+    position: relative;
+}
+
+.user-profile:hover {
+    background-color: var(--bg-hover, rgba(0, 0, 0, 0.05));
+    border-radius: 8px;
+}
+
+.profile-settings-icon {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-left: auto;
+    padding: 0 0.5rem;
+    transition: color 0.15s ease, transform 0.2s ease;
+}
+
+.user-profile:hover .profile-settings-icon {
+    color: var(--brand-primary);
+    transform: rotate(45deg);
+}
+
+/* Generator Memory Active Badge */
+.generator-memory-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.65rem;
+    background: #EEF2FF;
+    border: 1px solid #C7D2FE;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    color: #4338CA;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.generator-memory-badge i {
+    color: #6366F1;
+    font-size: 0.8rem;
+}
+
+.generator-memory-badge:hover {
+    background: #E0E7FF;
+    border-color: #818CF8;
+    transform: translateY(-1px);
+}
+
+.badge-manage-link {
+    font-weight: 600;
+    text-decoration: underline;
+    margin-left: 0.2rem;
+}
+
+/* Profile Modal Specifics */
+.modal-dialog-profile {
+    width: 92%;
+    max-width: 650px;
+    background: var(--bg-surface, #FFFFFF);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    animation: fadeIn 0.18s ease-out;
+}
+
+.profile-modal-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--brand-primary, #3B82F6);
+    color: #FFFFFF;
+    font-weight: 700;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: uppercase;
+}
+
+.modal-body-profile {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+/* Master Toggle Card */
+.memory-master-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: var(--bg-subtle, #F8FAFC);
+    border: 1px solid var(--border, #E2E8F0);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+}
+
+.master-toggle-info {
+    flex: 1;
+}
+
+/* iOS-Style Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 46px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #CBD5E1;
+    transition: .25s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .25s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input:checked + .slider {
+    background-color: var(--brand-primary, #3B82F6);
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+
+.slider.round {
+    border-radius: 26px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+/* Scope Tabs */
+.memory-scope-tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+}
+
+.scope-tab {
+    background: none;
+    border: none;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 0.15s ease;
+}
+
+.scope-tab:hover {
+    background: var(--bg-subtle);
+    color: var(--text-body);
+}
+
+.scope-tab.active {
+    background: #EFF6FF;
+    color: var(--brand-primary, #3B82F6);
+    font-weight: 600;
+}
+
+/* Memory Input */
+.memory-input-card {
+    background: var(--bg-surface);
+}
+
+.memory-text-input {
+    flex: 1;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: var(--text-body);
+    background: var(--bg-surface);
+}
+
+.memory-text-input:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+/* Memory List */
+.memory-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 100px;
+}
+
+.memory-item-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    background: var(--bg-subtle, #F8FAFC);
+    border: 1px solid var(--border, #E2E8F0);
+    border-radius: 6px;
+    transition: background-color 0.15s ease;
+}
+
+.memory-item-row:hover {
+    background-color: #F1F5F9;
+}
+
+.memory-item-row.disabled {
+    opacity: 0.55;
+    background-color: var(--bg-subtle);
+}
+
+.memory-item-checkbox {
+    width: 17px;
+    height: 17px;
+    cursor: pointer;
+    accent-color: var(--brand-primary);
+}
+
+.memory-item-text {
+    flex: 1;
+    font-size: 0.85rem;
+    color: var(--text-body);
+    line-height: 1.4;
+}
+
+.memory-item-del-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.35rem 0.45rem;
+    border-radius: 4px;
+    transition: color 0.12s ease, background 0.12s ease;
+}
+
+.memory-item-del-btn:hover {
+    color: var(--danger, #E62429);
+    background: var(--danger-bg, #FCE8E8);
+}
+
+
 
 
