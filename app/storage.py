@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 import threading
 import time
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import CACHE_DIR
+from app.dependencies import validate_quiz_id
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +56,18 @@ def write_json_atomic(path: Path, data: Any) -> None:
 
 def get_course_dir(course_id: str | int) -> Path:
     """Return the course cache directory, creating it if needed."""
-    path = CACHE_DIR / "courses" / str(course_id)
+    safe_id = str(course_id)
+    if not re.fullmatch(r"[0-9]{1,20}", safe_id):
+        raise ValueError(f"Invalid course id: {course_id!r}")
+    path = CACHE_DIR / "courses" / safe_id
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def _quiz_path(course_id: str | int, quiz_id: str) -> Path:
+    # Defense-in-depth: quiz_id comes from URL path params — reject anything
+    # that could traverse out of the course's quizzes directory.
+    validate_quiz_id(str(quiz_id))
     return get_course_dir(course_id) / "quizzes" / f"{quiz_id}.json"
 
 
@@ -75,7 +83,9 @@ def save_quiz_draft(
     """
     record = dict(quiz_data)
     record["created_by"] = created_by
-    record.setdefault("created_at", time.time())
+    now = time.time()
+    record.setdefault("created_at", now)
+    record.setdefault("updated_at", now)
 
     with _STORE_LOCK:
         write_json_atomic(_quiz_path(course_id, quiz_id), record)
@@ -99,9 +109,21 @@ def update_quiz_draft(
         current.update(patch)
         if created_by is not None:
             current["created_by"] = created_by
-        current.setdefault("created_at", time.time())
+        now = time.time()
+        current.setdefault("created_at", now)
+        current["updated_at"] = now
         write_json_atomic(_quiz_path(course_id, quiz_id), current)
         return current
+
+
+def delete_quiz_draft(course_id: str | int, quiz_id: str) -> bool:
+    """Delete a quiz draft file from disk under _STORE_LOCK. Returns True if deleted."""
+    with _STORE_LOCK:
+        file_path = _quiz_path(course_id, quiz_id)
+        if file_path.is_file():
+            file_path.unlink()
+            return True
+        return False
 
 
 def get_quiz_draft(course_id: str | int, quiz_id: str) -> dict[str, Any] | None:
@@ -118,7 +140,7 @@ def get_quiz_draft(course_id: str | int, quiz_id: str) -> dict[str, Any] | None:
 
 
 def list_quizzes(course_id: str | int) -> list[dict[str, Any]]:
-    """List quiz drafts for a course, newest first."""
+    """List quiz drafts for a course, newest edited first."""
     quizzes_dir = get_course_dir(course_id) / "quizzes"
     if not quizzes_dir.is_dir():
         return []
@@ -128,12 +150,15 @@ def list_quizzes(course_id: str | int) -> list[dict[str, Any]]:
         try:
             with file_path.open(encoding="utf-8") as f:
                 data = json.load(f)
+            created_at = data.get("created_at", file_path.stat().st_mtime)
+            updated_at = data.get("updated_at") or created_at
             quizzes.append(
                 {
                     "id": file_path.stem,
                     "title": data.get("quiz_title", "Untitled Quiz"),
                     "questions_count": len(data.get("questions", [])),
-                    "created_at": data.get("created_at", file_path.stat().st_mtime),
+                    "created_at": created_at,
+                    "updated_at": updated_at,
                     "created_by": data.get("created_by", "Instructor"),
                     "deployed": data.get("deployed", False),
                     "published": data.get("published", False),
@@ -146,7 +171,7 @@ def list_quizzes(course_id: str | int) -> list[dict[str, Any]]:
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Skipping unreadable quiz file %s: %s", file_path, exc)
 
-    quizzes.sort(key=lambda item: item["created_at"], reverse=True)
+    quizzes.sort(key=lambda item: item["updated_at"], reverse=True)
     return quizzes
 
 

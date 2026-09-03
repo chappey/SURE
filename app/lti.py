@@ -1,5 +1,7 @@
 import json
 import sys
+import threading
+import time
 import typing as t
 from html import escape
 
@@ -16,9 +18,31 @@ from pylti1p3.oidc_login import OIDCLogin
 from pylti1p3.message_launch import MessageLaunch
 from pylti1p3.launch_data_storage.base import LaunchDataStorage
 
+
 class InMemoryDataStorage(LaunchDataStorage[t.Any]):
-    def __init__(self):
-        self._cache: dict[str, t.Any] = {}
+    """Process-local TTL store for OIDC states, nonces, and state params.
+
+    Hardening over a plain dict:
+    - entries expire (``exp`` seconds; default ``default_expiration``), so an
+      unauthenticated flood of ``/login`` requests cannot grow memory forever;
+    - the store is bounded — when ``max_entries`` is exceeded the oldest
+      entries are evicted first;
+    - expired/nonce values are only readable once within their TTL window,
+      preserving pylti1p3's nonce-replay protection.
+
+    Still process-local by design (multi-worker deployments need Redis or
+    similar behind this same interface).
+    """
+
+    _DEFAULT_EXPIRATION = 5 * 60  # matches the OIDC state-cookie lifetime
+    _MAX_ENTRIES = 10_000
+
+    def __init__(self, *, default_expiration: int = _DEFAULT_EXPIRATION,
+                 max_entries: int = _MAX_ENTRIES):
+        self._cache: dict[str, tuple[t.Any, float | None]] = {}
+        self._lock = threading.Lock()
+        self._default_expiration = int(default_expiration)
+        self._max_entries = int(max_entries)
 
     def get_session_cookie_name(self) -> None:
         return None
@@ -26,20 +50,54 @@ class InMemoryDataStorage(LaunchDataStorage[t.Any]):
     def set_session_id(self, session_id: str) -> None:
         pass
 
+    def _prepare_key(self, key: str | None) -> str | None:
+        # LaunchDataStorage prefixes keys with session_id when set; we never
+        # set one, so keep keys global but namespace them per purpose upstream.
+        return key
+
+    def _purge_expired_locked(self, now: float) -> None:
+        expired = [k for k, (_, exp) in self._cache.items() if exp is not None and exp <= now]
+        for k in expired:
+            del self._cache[k]
+
     def get_value(self, key: str) -> t.Any:
         prepared_key = self._prepare_key(key)
-        return self._cache.get(prepared_key)
+        now = time.time()
+        with self._lock:
+            entry = self._cache.get(prepared_key)
+            if entry is None:
+                return None
+            value, exp = entry
+            if exp is not None and exp <= now:
+                del self._cache[prepared_key]
+                return None
+            return value
 
     def set_value(self, key: str, value: t.Any, exp: t.Optional[int] = None) -> None:
         prepared_key = self._prepare_key(key)
-        self._cache[prepared_key] = value
+        try:
+            ttl = float(exp) if exp is not None else float(self._default_expiration)
+        except (TypeError, ValueError):
+            ttl = float(self._default_expiration)
+        expires_at = time.time() + ttl
+        with self._lock:
+            self._cache[prepared_key] = (value, expires_at)
+            if len(self._cache) > self._max_entries:
+                self._purge_expired_locked(time.time())
+            if len(self._cache) > self._max_entries:
+                # Evict oldest-by-expiry until under budget.
+                overflow = len(self._cache) - self._max_entries
+                oldest = sorted(
+                    self._cache.items(), key=lambda kv: kv[1][1] or 0
+                )[:overflow]
+                for k, _ in oldest:
+                    del self._cache[k]
 
     def check_value(self, key: str) -> bool:
-        prepared_key = self._prepare_key(key)
-        return prepared_key in self._cache
+        return self.get_value(key) is not None
 
     def can_set_keys_expiration(self) -> bool:
-        return False
+        return True
 
 in_memory_storage = InMemoryDataStorage()
 
@@ -126,7 +184,12 @@ class FastAPIRedirect(Redirect):
         return self._process_response(response)
 
     def do_js_redirect(self) -> HTMLResponse:
-        html_content = f'<script type="text/javascript">window.location="{self._location}";</script>'
+        # json.dumps safely embeds the URL as a JS string literal (quotes,
+        # backslashes, and closing tags are escaped).
+        location_json = json.dumps(self._location)
+        html_content = (
+            f'<script type="text/javascript">window.location={location_json};</script>'
+        )
         response = HTMLResponse(content=html_content)
         return self._process_response(response)
 

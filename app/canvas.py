@@ -50,7 +50,7 @@ def _get_internal_host() -> str:
     """Return the internal hostname to use for Host headers in local dev, if any."""
     if not config.LOCAL_HTTP_LTI:
         return ""
-    env_host = (getattr(config, "CANVAS_INTERNAL_HOST", "") or "").strip()
+    env_host = (config.CANVAS_INTERNAL_HOST or "").strip()
     if env_host:
         return env_host
     try:
@@ -110,5 +110,9 @@ def download_canvas_file(canvas_client, file_obj, dest_path: str | Path, token: 
                 resp.raise_for_status()
         raise RuntimeError("Too many redirects")
     except Exception as exc:
-        logger.warning("Custom download failed: %s. Falling back to standard f.download().", exc)
+        # Exception text can embed the signed download URL — log type only.
+        logger.warning(
+            "Custom download failed (%s); falling back to standard file.download().",
+            type(exc).__name__,
+        )
         file_obj.download(str(dest_path))

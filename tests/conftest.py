@@ -182,8 +182,8 @@ def sample_batch_feedback_items() -> list:
 @pytest.fixture
 def ai_models_json(tmp_path: Path) -> Path:
     data = [
-        {"id": "model-a", "label": "Model A", "provider": "gemini", "model": "gemini-a", "default": True},
-        {"id": "model-b", "label": "Model B", "provider": "openrouter", "model": "openrouter-b"},
+        {"id": "model-a", "label": "Model A", "provider": "gemini", "model": "gemini-a", "default": True, "show_in_picker": True},
+        {"id": "model-b", "label": "Model B", "provider": "openrouter", "model": "openrouter-b", "show_in_picker": True},
         {"id": "model-c", "label": "Model C", "provider": "openrouter", "model": "openrouter-c"},
     ]
     path = tmp_path / "ai_models.json"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -18,6 +19,8 @@ from app.canvas_courses import (
 )
 from app.quiz_statistics import parse_quiz_statistics
 from app.storage import (
+    _STORE_LOCK,
+    delete_quiz_draft,
     get_quiz_draft,
     list_quizzes,
     update_quiz_draft,
@@ -364,3 +367,162 @@ def process_agentic_feedback(
         "agentic_feedback_processed": processed,
         "agentic_feedback_last_run": last_run,
     }
+
+
+def delete_question_from_draft(
+    course_id: int | str,
+    quiz_id: str,
+    question_index: int,
+    user_name: str = "Instructor",
+    course=None,
+) -> dict[str, Any]:
+    """Delete a question at question_index from a quiz draft atomically.
+
+    Enforces minimum 1 question remaining, renumbers Q{n}: prefixes,
+    and safely resets deployed status if currently deployed with 0 submissions.
+    """
+    with _STORE_LOCK:
+        draft = get_quiz_draft(course_id, quiz_id)
+        if not draft:
+            raise KeyError(f"Quiz draft {quiz_id} not found.")
+
+        questions = draft.get("questions") or []
+        if not (0 <= question_index < len(questions)):
+            raise IndexError(f"Question index {question_index} out of range (0..{len(questions)-1}).")
+        if len(questions) <= 1:
+            raise ValueError("A quiz must have at least one question.")
+
+        # Check Canvas submissions if deployed
+        canvas_quiz_id = draft.get("canvas_quiz_id") or draft.get("quiz_id")
+        if draft.get("deployed") and canvas_quiz_id and course:
+            from app.canvas_courses import count_eligible_quiz_submissions
+
+            try:
+                sub_count = count_eligible_quiz_submissions(course, int(canvas_quiz_id))
+                if sub_count > 0:
+                    raise ValueError("Cannot delete questions from a quiz with existing student submissions.")
+            except ValueError:
+                raise
+            except Exception as exc:
+                logger.warning("Could not check submissions for quiz %s: %s", canvas_quiz_id, exc)
+
+        deleted_q = questions.pop(question_index)
+
+        # Renumber Q{n}: prefixes if present
+        for i, q in enumerate(questions):
+            q_name = q.get("question_name") or ""
+            m = re.match(r"^Q\d+:\s*(.*)$", q_name)
+            if m:
+                q["question_name"] = f"Q{i+1}: {m.group(1)}"
+
+        patch: dict[str, Any] = {"questions": questions}
+        if draft.get("deployed"):
+            patch["deployed"] = False
+            patch["published"] = False
+            patch["canvas_quiz_id"] = None
+            patch["quiz_url"] = None
+            patch["agentic_feedback"] = None
+
+        updated = update_quiz_draft(course_id, quiz_id, patch, created_by=user_name)
+        return {"quiz": updated, "deleted_question": deleted_q}
+
+
+def update_question_in_draft(
+    course_id: int | str,
+    quiz_id: str,
+    question_index: int,
+    question_data: dict[str, Any],
+    user_name: str = "Instructor",
+) -> dict[str, Any]:
+    """Update question content at question_index in a quiz draft atomically."""
+    with _STORE_LOCK:
+        draft = get_quiz_draft(course_id, quiz_id)
+        if not draft:
+            raise KeyError(f"Quiz draft {quiz_id} not found.")
+
+        questions = draft.get("questions") or []
+        if not (0 <= question_index < len(questions)):
+            raise IndexError(f"Question index {question_index} out of range (0..{len(questions)-1}).")
+
+        questions[question_index] = question_data
+        patch: dict[str, Any] = {"questions": questions}
+        updated = update_quiz_draft(course_id, quiz_id, patch, created_by=user_name)
+        return {"quiz": updated, "updated_question": question_data}
+
+
+def save_full_quiz_draft(
+    course_id: int | str,
+    quiz_id: str,
+    quiz_title: str,
+    questions: list[dict[str, Any]],
+    user_name: str = "Instructor",
+    course=None,
+) -> dict[str, Any]:
+    """Save full quiz draft content (title + questions) atomically."""
+    with _STORE_LOCK:
+        draft = get_quiz_draft(course_id, quiz_id)
+        if not draft:
+            raise KeyError(f"Quiz draft {quiz_id} not found.")
+
+        if not questions:
+            raise ValueError("A quiz draft must contain at least one question.")
+
+        canvas_quiz_id = draft.get("canvas_quiz_id") or draft.get("quiz_id")
+        if draft.get("deployed") and canvas_quiz_id and course:
+            from app.canvas_courses import count_eligible_quiz_submissions
+
+            try:
+                sub_count = count_eligible_quiz_submissions(course, int(canvas_quiz_id))
+                if sub_count > 0:
+                    raise ValueError("Cannot modify a quiz that already has active student submissions.")
+            except ValueError:
+                raise
+            except Exception as exc:
+                logger.warning("Could not check submissions for quiz %s: %s", canvas_quiz_id, exc)
+
+        patch: dict[str, Any] = {
+            "quiz_title": quiz_title.strip() or draft.get("quiz_title", "Untitled Quiz"),
+            "questions": questions,
+        }
+        if draft.get("deployed"):
+            patch["deployed"] = False
+            patch["published"] = False
+            patch["canvas_quiz_id"] = None
+            patch["quiz_url"] = None
+            patch["agentic_feedback"] = None
+
+        updated = update_quiz_draft(course_id, quiz_id, patch, created_by=user_name)
+        return {"quiz": updated}
+
+
+def delete_entire_quiz_draft(
+    course_id: int | str,
+    quiz_id: str,
+    user_name: str = "Instructor",
+    course=None,
+) -> dict[str, Any]:
+    """Delete an entire quiz draft from disk. Refuses if deployed with student submissions."""
+    with _STORE_LOCK:
+        draft = get_quiz_draft(course_id, quiz_id)
+        if not draft:
+            raise KeyError(f"Quiz draft {quiz_id} not found.")
+
+        canvas_quiz_id = draft.get("canvas_quiz_id") or draft.get("quiz_id")
+        if draft.get("deployed") and canvas_quiz_id and course:
+            from app.canvas_courses import count_eligible_quiz_submissions
+
+            try:
+                sub_count = count_eligible_quiz_submissions(course, int(canvas_quiz_id))
+                if sub_count > 0:
+                    raise ValueError("Cannot delete a quiz that already has active student submissions.")
+            except ValueError:
+                raise
+            except Exception as exc:
+                logger.warning("Could not check submissions for quiz %s: %s", canvas_quiz_id, exc)
+
+        deleted = delete_quiz_draft(course_id, quiz_id)
+        if not deleted:
+            raise KeyError(f"Quiz draft {quiz_id} not found on disk.")
+        return {"status": "success", "quiz_id": quiz_id}
+
+

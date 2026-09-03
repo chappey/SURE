@@ -2,9 +2,30 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+# --- HTML sanitization for deploy -------------------------------------------------
+# Canvas renders question_text / *_comments_html / answer_comments as raw HTML
+# to students. LLM output and professor edits flow into these fields verbatim,
+# so strip active content before anything leaves for Canvas.
+_SCRIPT_BLOCK_RE = re.compile(r"<\s*(script|style|iframe|object|embed)\b[^>]*>.*?<\s*/\s*\1\s*>", re.I | re.S)
+_SELF_CLOSING_ACTIVE_RE = re.compile(r"<\s*(script|style|iframe|object|embed|link|meta)\b[^>]*/?>", re.I)
+_EVENT_ATTR_RE = re.compile(r"\son[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
+_DANGEROUS_URL_RE = re.compile(r"(href|src)\s*=\s*(\"|')?\s*(javascript|data|vbscript):[^(\"'>\s]*", re.I)
+
+
+def sanitize_canvas_html(text: str) -> str:
+    """Strip scripts, event handlers, and dangerous URLs from HTML-ish text."""
+    if not text:
+        return ""
+    cleaned = _SCRIPT_BLOCK_RE.sub("", str(text))
+    cleaned = _SELF_CLOSING_ACTIVE_RE.sub("", cleaned)
+    cleaned = _EVENT_ATTR_RE.sub("", cleaned)
+    cleaned = _DANGEROUS_URL_RE.sub("", cleaned)
+    return cleaned
 
 
 class GeneratedAnswer(BaseModel):
@@ -158,18 +179,21 @@ def validate_questions(quiz: DraftQuiz) -> None:
 
 
 def to_canvas_question(q: DraftQuestion) -> dict:
-    """Map generated question to canvasapi create_question payload."""
+    """Map generated question to canvasapi create_question payload.
+
+    Every HTML-rendered field is sanitized — Canvas shows these to students.
+    """
     payload = {
         "question_name": q.question_name,
-        "question_text": q.question_text,
+        "question_text": sanitize_canvas_html(q.question_text),
         "question_type": q.question_type,
         "points_possible": q.points_possible,
     }
 
     if q.correct_comments:
-        payload["correct_comments_html"] = q.correct_comments
+        payload["correct_comments_html"] = sanitize_canvas_html(q.correct_comments)
     if q.incorrect_comments and q.question_type != "matching_question":
-        payload["incorrect_comments_html"] = q.incorrect_comments
+        payload["incorrect_comments_html"] = sanitize_canvas_html(q.incorrect_comments)
 
     if q.question_type == "essay_question":
         return payload
@@ -188,7 +212,7 @@ def to_canvas_question(q: DraftQuestion) -> dict:
             {
                 "answer_text": a.answer_text,
                 "answer_weight": a.answer_weight,
-                "answer_comments": a.answer_comments,
+                "answer_comments": sanitize_canvas_html(a.answer_comments),
             }
             for a in q.answers
         ]

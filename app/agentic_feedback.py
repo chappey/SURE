@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from app.llm.fallback import fallback_models, generate_json_with_fallback
+from app.ops.context import llm_purpose
 from app.schemas import BatchFeedbackResponse, GeneratedAnswer, GeneratedQuestion
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,20 @@ CONFIDENCE_LABELS = [
     "Very confident",
     "Completely confident",
 ]
+
+# Labels students can pick that count as "high confidence" in analytics.
+_HIGH_CONFIDENCE_LABELS = frozenset(
+    {"very confident", "completely confident", "high", "4", "5"}
+)
+
+
+def confidence_is_high(label: str | None) -> bool:
+    """True when a stored confidence label indicates high confidence.
+
+    Tolerates case/whitespace and the short forms used by older drafts
+    ("High", "4", "5"). Unknown/empty labels are NOT high confidence.
+    """
+    return str(label or "").strip().lower() in _HIGH_CONFIDENCE_LABELS
 
 _FEEDBACK_BANNER = (
     '<p style="color:#b00020;font-weight:700;margin:0 0 0.5rem;">'
@@ -305,7 +320,8 @@ def _call_for_chunk(
     )
 
     schema = BatchFeedbackResponse.model_json_schema()
-    text, _entry = generate_json_with_fallback(models, prompt, schema)
+    with llm_purpose("agentic_feedback"):
+        text, _entry = generate_json_with_fallback(models, prompt, schema)
 
     parsed = json.loads(text)
     response = BatchFeedbackResponse.model_validate(parsed)

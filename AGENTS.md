@@ -11,8 +11,9 @@ Canvas. The RAG/OCR extraction pipeline is intentionally retained.
 
 ## Layout
 
-- `main.py` — FastAPI entrypoint, middleware, health endpoints.
+- `main.py` — FastAPI entrypoint, middleware, health endpoints, ops dashboard.
 - `app/` — all business logic. Routers in `app/routers/` stay thin; logic lives in `app/*`.
+- `app/ops/` — usage ledger, per-user spend caps, model circuit breaker, webhook alerts.
 - `app/config.py` — every environment variable. Single source of truth.
 - `utils/` — one-off setup tools (LTI/OAuth config). Not importable app code.
 - `tests/` — pytest unit tests for pure logic. (Instance-specific and PII-bearing tests live outside this repo.)

@@ -2,15 +2,28 @@
 
 from __future__ import annotations
 
+import re
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Path, Request
 
 from app.auth import require_lti_launch, require_oauth_configured
 from app.canvas import get_canvas
 from app.canvas_courses import course_is_teacher
 from app.canvas_ids import normalize_canvas_course_id
 from app.canvas_oauth import ensure_fresh_token
+
+# quiz_id values are server-generated token_hex strings; enforce the shape at
+# the router boundary so an id like "../x" can never reach filesystem paths.
+QUIZ_ID_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
+_QUIZ_ID_RE = re.compile(QUIZ_ID_PATTERN)
+
+
+def validate_quiz_id(quiz_id: str) -> str:
+    """Raise ``ValueError`` unless ``quiz_id`` is a safe identifier."""
+    if not _QUIZ_ID_RE.match(quiz_id or ""):
+        raise ValueError(f"Invalid quiz id: {quiz_id!r}")
+    return quiz_id
 
 
 def resolve_canvas_user_id(request: Request) -> str:
@@ -92,3 +105,13 @@ CanvasClientDep = Annotated[object, Depends(resolve_canvas_client)]
 CanvasUserIdDep = Annotated[str, Depends(resolve_canvas_user_id)]
 RequireTeacherDep = Annotated[None, Depends(require_teacher)]
 RequireLtiLaunchDep = Annotated[None, Depends(require_lti_launch)]
+# Validated path parameter: rejects traversal/separator characters before any
+# storage access happens.
+QuizIdPath = Annotated[
+    str,
+    Path(
+        pattern=QUIZ_ID_PATTERN,
+        max_length=128,
+        description="Quiz draft identifier",
+    ),
+]

@@ -128,6 +128,9 @@ EasyLearn exposes standard health endpoints for container orchestrators and load
 |----------|-------------|------|-------------|
 | `GET /healthz` | `200` | Liveness | Checks if application process is running. |
 | `GET /readyz` | `200` or `503` | Readiness | Checks LTI RSA keys, `lti_config.json`, Canvas API URL, and AI provider key. |
+| `GET /ops` | `200` / `303` / `404` | Operator dashboard | Spend, per-user usage, model health, recent LLM calls. Requires `OPS_ADMIN_TOKEN`. Disabled (404) when the token is unset. |
+
+Set `OPS_ADMIN_TOKEN` and optionally `ALERT_WEBHOOK_URL` before using paid catalog models. The catalog lists named models only (`openrouter/free` is not used — it can route to weak models). Daily spend caps (`USER_DAILY_SPEND_USD`, `GLOBAL_DAILY_SPEND_USD`) block further LLM calls with HTTP 429. Usage is stored in `cache/ops/usage.db`.
 
 ---
 
@@ -137,4 +140,4 @@ EasyLearn exposes standard health endpoints for container orchestrators and load
 |------|----------------|---------|
 | `./keys/` | `/app/keys` | RSA keypair (`private.key`, `public.key`) for LTI signing |
 | `./config/lti_config.json` | `/app/config/lti_config.json` | LTI tool registration config |
-| `./cache/` | `/app/cache` | Downloaded module files and saved quiz drafts |
+| `./cache/` | `/app/cache` | Downloaded module files, quiz drafts, and `ops/usage.db` (LLM spend ledger) |

@@ -10,28 +10,43 @@ from google.genai import types
 
 from app import config
 from app.llm.catalog import ModelEntry
+from app.llm.timeout import llm_timeout_seconds
+from app.ops.trace import run_llm_call, usage_from_gemini
 
 logger = logging.getLogger(__name__)
 
 
-def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str:
+def _client():
     api_key = config.GEMINI_API_KEY.strip()
     if not api_key:
         raise RuntimeError("Set GEMINI_API_KEY in .env (https://aistudio.google.com/apikey)")
-
-    logger.info("Gemini requesting: model=%s", model.model)
-    client = genai.Client(
+    return genai.Client(
         api_key=api_key,
-        http_options=types.HttpOptions(timeout=config.LLM_TIMEOUT_SECONDS * 1000),
+        http_options=types.HttpOptions(timeout=int(llm_timeout_seconds() * 1000)),
     )
-    response = client.models.generate_content(
-        model=model.model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.2,
-            response_mime_type="application/json",
-            response_json_schema=schema,
-        ),
+
+
+def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str:
+    logger.info("Gemini requesting: model=%s", model.model)
+    client = _client()
+
+    def _call():
+        return client.models.generate_content(
+            model=model.model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                response_mime_type="application/json",
+                response_json_schema=schema,
+            ),
+        )
+
+    response = run_llm_call(
+        model,
+        "json",
+        _call,
+        prompt_chars=len(prompt),
+        usage_from=usage_from_gemini,
     )
     text = response.text
     if not text:
@@ -40,19 +55,22 @@ def generate_json(model: ModelEntry, prompt: str, schema: dict[str, Any]) -> str
 
 
 def generate_text(model: ModelEntry, prompt: str) -> str:
-    api_key = config.GEMINI_API_KEY.strip()
-    if not api_key:
-        raise RuntimeError("Set GEMINI_API_KEY in .env (https://aistudio.google.com/apikey)")
-
     logger.info("Gemini requesting: model=%s", model.model)
-    client = genai.Client(
-        api_key=api_key,
-        http_options=types.HttpOptions(timeout=config.LLM_TIMEOUT_SECONDS * 1000),
-    )
-    response = client.models.generate_content(
-        model=model.model,
-        contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.4),
+    client = _client()
+
+    def _call():
+        return client.models.generate_content(
+            model=model.model,
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.4),
+        )
+
+    response = run_llm_call(
+        model,
+        "text",
+        _call,
+        prompt_chars=len(prompt),
+        usage_from=usage_from_gemini,
     )
     text = response.text
     if not text:

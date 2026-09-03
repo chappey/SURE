@@ -130,7 +130,7 @@ function renderFeedbackWorkspace(data) {
             ? "Grounded in course materials."
             : "No stored source text — regenerate quiz later to attach materials.";
         const genNote = data.generated_new
-            ? ` Generated ${data.generated_new} new.`
+            ? ` Generated ${escapeHtml(data.generated_new)} new.`
             : "";
         statusEl.innerHTML = `<span class="type-badge badge-matching"><i class="fa-solid fa-eye"></i> Review Mode</span> ${sourceNote}${genNote}`;
     }
@@ -190,7 +190,7 @@ function renderFeedbackWorkspace(data) {
                     <h4 style="margin: 0; font-size: 1.05rem;">${escapeHtml(sub.user_name || "Student")}</h4>
                     ${scoreLine ? `<span style="font-size: 0.78rem; color: var(--text-muted);">Score: ${escapeHtml(scoreLine)}</span>` : ""}
                 </div>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="loadFeedbackWorkspace('${escapeAttr(data.quiz_id)}', { force: true })"><i class="fa-solid fa-arrows-rotate"></i> Regenerate</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-quiz-id="${escapeAttr(data.quiz_id)}" onclick="loadFeedbackWorkspace(this.dataset.quizId, { force: true })"><i class="fa-solid fa-arrows-rotate"></i> Regenerate</button>
             </div>
             ${questionsHTML}
         `;

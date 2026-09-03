@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import sys
 import time
+from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 # Register custom pylti1p3 FastAPI adapter before router modules import it.
 from app import lti as pylti1p3_fastapi
@@ -15,6 +17,7 @@ from canvasapi.exceptions import InvalidAccessToken
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import config
@@ -22,12 +25,30 @@ from app.auth import easylearn_url, oauth_enabled
 from app.config import STATIC_DIR
 from app.exceptions import AppError
 from app.logging_config import configure_logging
-from app.routers import api, lti_routes, oauth, pages
+from app.ops.context import bind_request
+from app.routers import api, lti_routes, oauth, ops, pages
 
 logger = configure_logging()
 
 
-app = FastAPI(title="EasyLearn", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    from app.ops import ledger
+    from app.ops.poll import poll_forever
+
+    ledger.init()
+    poll_task = asyncio.create_task(poll_forever())
+    try:
+        yield
+    finally:
+        poll_task.cancel()
+        try:
+            await poll_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="EasyLearn", version="0.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -106,22 +127,25 @@ async def lti_public_url_redirect(request: Request, call_next):
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log request metadata, duration, and status."""
+    """Log request metadata and duration.
+
+    Exceptions are deliberately NOT caught here — ``handle_unhandled`` below is
+    the single last-resort handler, so there's exactly one error body/log path.
+    """
     start_time = time.perf_counter()
     path = request.url.path
     method = request.method
     rid = secrets.token_hex(4)
     request.state.request_id = rid
-    logger.info("[%s] → %s %s", rid, method, path)
-
+    bind_request(request)
+    user = "-"
     try:
-        response = await call_next(request)
+        user = str(request.session.get("canvas_user_id") or "-")
     except Exception:
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        logger.exception(
-            "[%s] Unhandled exception during %s %s (%.0fms)", rid, method, path, elapsed_ms
-        )
-        return JSONResponse(status_code=500, content={"error": "Internal Server Error"})
+        pass
+    logger.info("[%s] → %s %s user=%s", rid, method, path, user)
+
+    response = await call_next(request)
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     logger.info(
@@ -139,11 +163,15 @@ app.add_middleware(
 
 
 @app.exception_handler(InvalidAccessToken)
-def handle_invalid_token(request: Request, exc: InvalidAccessToken):
+async def handle_invalid_token(request: Request, exc: InvalidAccessToken):
     """Attempt a one-shot refresh; otherwise clear tokens and prompt for re-authorization."""
     from app.canvas_oauth import clear_tokens, try_refresh
 
-    if try_refresh(request):
+    # The refresh is a blocking HTTP call — run it on a worker thread so the
+    # event loop isn't stalled for up to the full requests timeout.
+    refreshed = await run_in_threadpool(try_refresh, request)
+
+    if refreshed:
         logger.info("Canvas token refreshed after 401; asking client to retry.")
         if request.url.path.startswith("/api/"):
             return JSONResponse(
@@ -217,6 +245,7 @@ app.include_router(pages.router)
 app.include_router(oauth.router)
 app.include_router(lti_routes.router)
 app.include_router(api.router)
+app.include_router(ops.router)
 
 
 if __name__ == "__main__":

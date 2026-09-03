@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -15,23 +16,19 @@ from app.canvas import download_canvas_file
 from app.canvas_courses import (
     list_teacher_courses,
     publish_canvas_quiz,
-)
-from app.feedback_workspace import (
-    build_or_merge_feedback_workspace,
-    filter_content_question_stats,
-    get_saved_workspace_payload,
-    save_feedback_workspace,
+    update_quiz_submission_comments,
 )
 from app.config import CACHE_DIR
 from app.dependencies import (
     CanvasClientDep,
     CourseIdDep,
+    QuizIdPath,
     RequireLtiLaunchDep,
     RequireTeacherDep,
     validate_course_access,
 )
 from app.deployment import deploy_quiz_to_canvas, find_module_by_id_or_name
-from app.agentic_feedback import html_to_plain_text
+from app.agentic_feedback import confidence_is_high, html_to_plain_text
 from app.feedback_workspace import (
     build_or_merge_feedback_workspace,
     filter_content_question_stats,
@@ -40,18 +37,26 @@ from app.feedback_workspace import (
 )
 from app.extraction import extract_file_text, is_supported_material
 from app.generation import format_llm_error, generate_weekly_quiz
+from app.llm import jobs as generate_jobs
 from app.llm.catalog import list_models_for_api, resolve_model
 from app.llm.fallback import AllModelsFailedError
-from app.rate_limiter import rate_limit_generate
+from app.ops import context as ops_context
+from app.rate_limiter import rate_limit_feedback_llm, rate_limit_generate, require_llm_budget
 from app.quizzes_service import (
     build_quizzes_overview,
+    delete_entire_quiz_draft,
+    delete_question_from_draft,
     get_quiz_stats,
     process_agentic_feedback,
+    save_full_quiz_draft,
+    update_question_in_draft,
 )
 from pydantic import BaseModel
 
 from app.schemas import (
     DeployQuizRequest,
+    DraftQuestion,
+    DraftQuiz,
     GenerateQuizRequest,
     ModelsResponse,
     ProcessAgenticFeedbackRequest,
@@ -259,6 +264,7 @@ def api_generate_quiz(
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
     ___: None = Depends(rate_limit_generate),
+    ____: None = Depends(require_llm_budget),
 ):
     """Download files, extract text, and generate a quiz via the selected AI model."""
     model_entry = None
@@ -322,42 +328,61 @@ def api_generate_quiz(
             if body.points_per_type.get(ui_key)
         }
 
-        quiz, model_entry = generate_weekly_quiz(
-            week_name=body.quiz_title,
-            material_text=combined_text,
-            num_mc=num_mc,
-            num_tf=num_tf,
-            num_matching=num_matching,
-            difficulty_counts=body.difficulty_counts,
-            points_per_q=body.points_per_q,
-            points_by_type=points_by_type,
-            mc_options=body.mc_options,
-            matching_pairs=body.matching_pairs,
-            include_answer_feedback=include_answer_feedback,
-            custom_instructions=body.custom_instructions,
-            model_id=body.model_id,
-        )
-        if body.quiz_title:
-            quiz.quiz_title = body.quiz_title
-
         quiz_id = secrets.token_hex(8)
-        quiz.id = quiz_id
-        quiz_dict = quiz.model_dump()
-        quiz_dict["includes_answer_feedback"] = include_answer_feedback
-        quiz_dict["includes_agentic_feedback"] = body.include_agentic_feedback
-        quiz_dict["module_id"] = body.module_id
-        quiz_dict["file_ids"] = list(body.file_ids)
-        quiz_dict["source_text"] = combined_text
-        quiz_dict["model_id"] = model_entry.id
-        quiz_dict["model_label"] = model_entry.label
-        save_quiz_draft(
-            course_id=course_id,
-            quiz_id=quiz_id,
-            quiz_data=quiz_dict,
-            created_by=request.session.get("user_name", "Instructor"),
-        )
+        job_id = secrets.token_hex(8)
+        generate_jobs.create(job_id)
+        ident = ops_context.snapshot()
+        created_by = request.session.get("user_name", "Instructor")
 
-        return quiz_dict
+        def _run() -> None:
+            generate_jobs.set_running(job_id)
+            ops_context.bind_snapshot(ident)
+            try:
+                quiz, entry = generate_weekly_quiz(
+                    week_name=body.quiz_title,
+                    material_text=combined_text,
+                    num_mc=num_mc,
+                    num_tf=num_tf,
+                    num_matching=num_matching,
+                    difficulty_counts=body.difficulty_counts,
+                    points_per_q=body.points_per_q,
+                    points_by_type=points_by_type,
+                    mc_options=body.mc_options,
+                    matching_pairs=body.matching_pairs,
+                    include_answer_feedback=include_answer_feedback,
+                    custom_instructions=body.custom_instructions,
+                    model_id=body.model_id,
+                )
+                if body.quiz_title:
+                    quiz.quiz_title = body.quiz_title
+                quiz.id = quiz_id
+                quiz_dict = quiz.model_dump()
+                quiz_dict["includes_answer_feedback"] = include_answer_feedback
+                quiz_dict["includes_agentic_feedback"] = body.include_agentic_feedback
+                quiz_dict["module_id"] = body.module_id
+                quiz_dict["file_ids"] = list(body.file_ids)
+                quiz_dict["source_text"] = combined_text
+                quiz_dict["model_id"] = entry.id
+                quiz_dict["model_label"] = entry.label
+                save_quiz_draft(
+                    course_id=course_id,
+                    quiz_id=quiz_id,
+                    quiz_data=quiz_dict,
+                    created_by=created_by,
+                )
+                generate_jobs.set_ready(job_id, quiz_dict)
+            except Exception as exc:
+                status, detail = format_llm_error(exc, model_entry)
+                if isinstance(exc, AllModelsFailedError):
+                    logger.warning("All available models failed: %s", exc.errors)
+                elif status >= 500 and not isinstance(exc, genai_errors.APIError):
+                    logger.exception("Error in background /api/generate-quiz")
+                else:
+                    logger.warning("LLM error in background /api/generate-quiz: %s", detail)
+                generate_jobs.set_error(job_id, detail)
+
+        threading.Thread(target=_run, daemon=True).start()
+        return {"job_id": job_id, "status": "pending"}
     except HTTPException:
         raise
     except Exception as exc:
@@ -374,6 +399,19 @@ def api_generate_quiz(
         else:
             logger.warning("LLM error in /api/generate-quiz: %s", detail)
         raise HTTPException(status_code=status, detail=detail) from exc
+
+
+@router.get("/generate-jobs/{job_id}")
+def get_generate_job(
+    job_id: str,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> dict:
+    """Poll a background quiz-generation job."""
+    job = generate_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Generation job not found.")
+    return job
 
 
 @router.post("/deploy-quiz")
@@ -461,7 +499,7 @@ def get_quizzes_overview(
 @router.get("/quizzes/{quiz_id}")
 def get_quiz_by_id(
     course_id: CourseIdDep,
-    quiz_id: str,
+    quiz_id: QuizIdPath,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
 ) -> dict:
@@ -477,11 +515,133 @@ def get_quiz_by_id(
     return quiz
 
 
+@router.delete("/quizzes/{quiz_id}/questions/{question_index}")
+def delete_quiz_question_endpoint(
+    course_id: CourseIdDep,
+    quiz_id: QuizIdPath,
+    question_index: int,
+    request: Request,
+    canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> dict:
+    """Delete a specific question from a quiz draft."""
+    try:
+        course = canvas.get_course(course_id)
+        user_name = request.session.get("user_name", "Instructor")
+        res = delete_question_from_draft(
+            course_id=course_id,
+            quiz_id=quiz_id,
+            question_index=question_index,
+            user_name=user_name,
+            course=course,
+        )
+        return {"status": "success", **res}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Quiz draft not found.")
+    except (IndexError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Error deleting question %s from quiz %s: %s", question_index, quiz_id, exc)
+        raise HTTPException(status_code=500, detail="Could not delete question.")
+
+
+@router.put("/quizzes/{quiz_id}/questions/{question_index}")
+def update_quiz_question_endpoint(
+    course_id: CourseIdDep,
+    quiz_id: QuizIdPath,
+    question_index: int,
+    body: DraftQuestion,
+    request: Request,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> dict:
+    """Update a specific question in a quiz draft."""
+    try:
+        user_name = request.session.get("user_name", "Instructor")
+        res = update_question_in_draft(
+            course_id=course_id,
+            quiz_id=quiz_id,
+            question_index=question_index,
+            question_data=body.model_dump(),
+            user_name=user_name,
+        )
+        return {"status": "success", **res}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Quiz draft not found.")
+    except (IndexError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Error updating question %s in quiz %s: %s", question_index, quiz_id, exc)
+        raise HTTPException(status_code=500, detail="Could not update question.")
+
+
+@router.put("/quizzes/{quiz_id}")
+def save_quiz_draft_endpoint(
+    course_id: CourseIdDep,
+    quiz_id: QuizIdPath,
+    body: DraftQuiz,
+    request: Request,
+    canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> dict:
+    """Save full quiz draft (title and questions)."""
+    try:
+        course = canvas.get_course(course_id)
+        user_name = request.session.get("user_name", "Instructor")
+        res = save_full_quiz_draft(
+            course_id=course_id,
+            quiz_id=quiz_id,
+            quiz_title=body.quiz_title,
+            questions=[q.model_dump() for q in body.questions],
+            user_name=user_name,
+            course=course,
+        )
+        return {"status": "success", **res}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Quiz draft not found.")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Error saving quiz draft %s: %s", quiz_id, exc)
+        raise HTTPException(status_code=500, detail="Could not save quiz draft.")
+
+
+@router.delete("/quizzes/{quiz_id}")
+def delete_quiz_draft_endpoint(
+    course_id: CourseIdDep,
+    quiz_id: QuizIdPath,
+    request: Request,
+    canvas: CanvasClientDep,
+    _: RequireLtiLaunchDep,
+    __: RequireTeacherDep,
+) -> dict:
+    """Delete an entire quiz draft from disk."""
+    try:
+        course = canvas.get_course(course_id)
+        user_name = request.session.get("user_name", "Instructor")
+        res = delete_entire_quiz_draft(
+            course_id=course_id,
+            quiz_id=quiz_id,
+            user_name=user_name,
+            course=course,
+        )
+        return {"status": "success", **res}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Quiz draft not found.")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Error deleting quiz draft %s: %s", quiz_id, exc)
+        raise HTTPException(status_code=500, detail="Could not delete quiz draft.")
+
+
 @router.get("/quizzes/{quiz_id}/stats")
 def get_quiz_stats_endpoint(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
-    quiz_id: str,
+    quiz_id: QuizIdPath,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
 ) -> dict:
@@ -532,12 +692,14 @@ def get_quiz_stats_endpoint(
     workspace = draft.get("feedback_workspace") or {}
     for sub in workspace.get("submissions") or []:
         for q_item in sub.get("questions") or []:
-            conf = str(q_item.get("confidence") or "").lower().strip()
+            conf = q_item.get("confidence")
             is_corr = bool(q_item.get("is_correct"))
             if not conf:
                 continue
             misconception_matrix["total_responses"] += 1
-            is_high = conf in ("high", "5", "4", "very high", "confident")
+            # Labels are the meta-question options ("Very confident", ...) —
+            # confidence_is_high normalizes case and legacy short forms.
+            is_high = confidence_is_high(str(conf))
             if is_high and not is_corr:
                 misconception_matrix["high_confidence_wrong"] += 1
             elif is_high and is_corr:
@@ -556,11 +718,13 @@ def get_quiz_stats_endpoint(
 def process_agentic_feedback_endpoint(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
-    quiz_id: str,
+    quiz_id: QuizIdPath,
     request: Request,
     body: ProcessAgenticFeedbackRequest,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
+    ___: None = Depends(rate_limit_feedback_llm),
+    ____: None = Depends(require_llm_budget),
 ) -> dict:
     """Generate personalized feedback comments for completed quiz submissions."""
     draft = get_quiz_draft(course_id, quiz_id)
@@ -593,7 +757,7 @@ def process_agentic_feedback_endpoint(
 @router.post("/quizzes/{quiz_id}/undeploy")
 def undeploy_quiz_endpoint(
     course_id: CourseIdDep,
-    quiz_id: str,
+    quiz_id: QuizIdPath,
     request: Request,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
@@ -628,7 +792,7 @@ class SaveWorkspaceRequest(BaseModel):
 @router.get("/quizzes/{quiz_id}/agentic-feedback/workspace")
 def get_feedback_workspace_endpoint(
     course_id: CourseIdDep,
-    quiz_id: str,
+    quiz_id: QuizIdPath,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
 ) -> dict:
@@ -653,11 +817,13 @@ def get_feedback_workspace_endpoint(
 def preview_agentic_feedback_endpoint(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
-    quiz_id: str,
+    quiz_id: QuizIdPath,
     request: Request,
     body: PreviewFeedbackRequest,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,
+    ___: None = Depends(rate_limit_feedback_llm),
+    ____: None = Depends(require_llm_budget),
 ) -> dict:
     """Build or merge Feedback Review workspace (LLM only for new/forced rows)."""
     draft = get_quiz_draft(course_id, quiz_id)
@@ -681,7 +847,7 @@ def preview_agentic_feedback_endpoint(
 @router.put("/quizzes/{quiz_id}/agentic-feedback/workspace")
 def save_feedback_workspace_endpoint(
     course_id: CourseIdDep,
-    quiz_id: str,
+    quiz_id: QuizIdPath,
     body: SaveWorkspaceRequest,
     request: Request,
     _: RequireLtiLaunchDep,
@@ -708,7 +874,7 @@ class ApproveFeedbackRequest(BaseModel):
 def approve_agentic_feedback_endpoint(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
-    quiz_id: str,
+    quiz_id: QuizIdPath,
     body: ApproveFeedbackRequest,
     request: Request,
     _: RequireLtiLaunchDep,
@@ -726,11 +892,29 @@ def approve_agentic_feedback_endpoint(
     course = canvas.get_course(course_id)
     approved_subs = body.submissions or []
     count = 0
+    errors: list[dict] = []
+
+    # Map submission_id -> attempt from the saved workspace so we push comments
+    # against the same Canvas attempt the feedback was generated for.
+    attempts_by_sub: dict[int, int] = {}
+    for ws_sub in (draft.get("feedback_workspace") or {}).get("submissions") or []:
+        try:
+            sid = int(ws_sub.get("submission_id") or ws_sub.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if sid:
+            try:
+                attempts_by_sub[sid] = int(ws_sub.get("attempt") or 1)
+            except (TypeError, ValueError):
+                attempts_by_sub[sid] = 1
 
     for item in approved_subs:
         sub_id = item.get("submission_id")
         comments = item.get("comments") or {}
-        if sub_id and comments:
+        if not sub_id or not comments:
+            continue
+        try:
+            sid = int(sub_id)
             payload = {
                 int(k) if str(k).isdigit() else k: {"comment": str(v)}
                 for k, v in comments.items()
@@ -738,11 +922,24 @@ def approve_agentic_feedback_endpoint(
             update_quiz_submission_comments(
                 course,
                 int(canvas_quiz_id),
-                int(sub_id),
-                attempt=1,
-                question_payload=payload
+                sid,
+                attempt=attempts_by_sub.get(sid, 1),
+                question_payload=payload,
             )
             count += 1
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid submission payload: {exc}"
+            ) from exc
+        except Exception as exc:
+            # Keep pushing remaining submissions; report this one back.
+            logger.warning(
+                "Failed to push feedback for submission %s on quiz %s: %s",
+                sid,
+                quiz_id,
+                exc,
+            )
+            errors.append({"submission_id": sid, "error": str(exc)[:300]})
 
     update_quiz_draft(
         course_id=course_id,
@@ -752,14 +949,18 @@ def approve_agentic_feedback_endpoint(
         },
         created_by=request.session.get("user_name", "Instructor"),
     )
-    return {"status": "success", "pushed_submissions": count}
+    response = {"status": "success", "pushed_submissions": count}
+    if errors:
+        response["errors"] = errors
+        response["status"] = "partial"
+    return response
 
 
 @router.post("/quizzes/{quiz_id}/publish")
 def publish_quiz_endpoint(
     course_id: CourseIdDep,
     canvas: CanvasClientDep,
-    quiz_id: str,
+    quiz_id: QuizIdPath,
     request: Request,
     _: RequireLtiLaunchDep,
     __: RequireTeacherDep,

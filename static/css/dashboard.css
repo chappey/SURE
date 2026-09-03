@@ -1219,6 +1219,27 @@ input[type="range"] {
     background: var(--bg-subtle);
 }
 
+.btn-danger-subtle {
+    background: transparent;
+    border: 1px solid rgba(230, 36, 41, 0.28);
+    color: var(--danger);
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.btn-danger-subtle:hover:not(:disabled) {
+    background: var(--danger-bg);
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.btn-danger-subtle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* Generator progress */
 .generator-progress {
     display: none;
@@ -1681,6 +1702,90 @@ i.fa-spin {
 
 .deploy-success-banner .banner-actions .btn {
     font-size: 0.8rem;
+}
+
+/* Draft Saved Banner */
+.draft-saved-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: #EDFDF5;
+    border: 1px solid #10B981;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.12);
+    animation: fadeInSlideDown 0.25s ease-out;
+}
+
+.draft-saved-banner .banner-message {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: #065F46;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.draft-saved-banner .banner-message i {
+    color: #10B981;
+    font-size: 1.1rem;
+}
+
+@keyframes fadeInSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Quiz Library Row Pulse Animation */
+@keyframes rowPulseGlow {
+    0% {
+        background-color: rgba(59, 130, 246, 0.35);
+        outline: 2px solid var(--brand-primary);
+    }
+    50% {
+        background-color: rgba(59, 130, 246, 0.18);
+        outline: 2px solid var(--brand-primary);
+    }
+    100% {
+        background-color: transparent;
+        outline: 2px solid transparent;
+    }
+}
+
+.row-highlight-pulse {
+    animation: rowPulseGlow 2.5s ease-out;
+}
+
+/* Quiz Title Metadata Subtitle */
+.quiz-title-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* Question Count Pill Badge */
+.badge-qcount {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    color: var(--text-body);
+    border: 1px solid var(--border);
+    white-space: nowrap;
 }
 
 .table-scroll {

@@ -402,6 +402,33 @@ function completeAllSteps() {
 
 /* ---------- Generate ---------- */
 
+function pollGenerateJob(jobId) {
+    return new Promise((resolve, reject) => {
+        const poll = async () => {
+            try {
+                const r = await fetch(`/api/generate-jobs/${jobId}`);
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    reject(new Error(parseApiDetail(data) || "Could not check generation status."));
+                    return;
+                }
+                if (data.status === "ready") {
+                    resolve(data.quiz);
+                    return;
+                }
+                if (data.status === "error") {
+                    reject(new Error(data.error || "Could not generate quiz. Please try again."));
+                    return;
+                }
+                setTimeout(poll, 2000);
+            } catch (err) {
+                reject(err);
+            }
+        };
+        poll();
+    });
+}
+
 async function triggerQuizGeneration() {
     if (!modulesReady || !modelsReady) {
         alert("Still loading course data. Please wait a moment.");
@@ -495,7 +522,7 @@ async function triggerQuizGeneration() {
         const res = await fetch("/api/generate-quiz", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
+            body: JSON.stringify(body),
         });
 
         if (!res.ok) {
@@ -504,7 +531,11 @@ async function triggerQuizGeneration() {
             throw new Error(parseApiDetail(data) || "Could not generate quiz. Please try again.");
         }
 
-        currentActiveQuiz = await res.json();
+        const { job_id } = await res.json();
+        if (!job_id) {
+            throw new Error("Server did not start a generation job. Please try again.");
+        }
+        currentActiveQuiz = await pollGenerateJob(job_id);
         currentActiveQuiz.includes_answer_feedback = false;
         currentActiveQuiz.includes_agentic_feedback = true;
         if (Array.isArray(currentActiveQuiz.questions)) {
@@ -521,7 +552,11 @@ async function triggerQuizGeneration() {
     } catch (err) {
         clearInterval(stepInterval);
         console.error("Error generating quiz:", err);
-        alert(err.message || "Could not generate quiz. Please try again.");
+        let msg = err.message || "Quiz generation failed. Please try again.";
+        if (msg.includes("validation error") || msg.includes("errors.pydantic.dev") || msg.includes("Traceback")) {
+            msg = "Quiz generation failed: The selected AI model returned an invalid response format. Please try again or choose another model.";
+        }
+        alert(msg);
         document.getElementById("gen-loader").style.display = "none";
         document.getElementById("preview-placeholder").style.display = "flex";
     } finally {
@@ -719,7 +754,8 @@ function renderDraftEditor() {
             </div>
 
             <div class="q-actions">
-                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleEditForm(${qIndex})">Edit</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleEditForm(${qIndex})"><i class="fa-solid fa-pen-to-square"></i> Edit</button>
+                <button type="button" class="btn btn-danger-subtle btn-sm" onclick="deleteQuestion(${qIndex})" title="Delete Question ${qIndex + 1}"><i class="fa-solid fa-trash-can"></i> Delete</button>
             </div>
 
             <div class="editor-form" id="editor-form-${qIndex}" style="display: none;">
@@ -792,7 +828,56 @@ function toggleEditForm(qIndex) {
     form.style.display = isVisible ? "none" : "block";
 }
 
-function saveQuestionEdit(qIndex) {
+async function deleteQuestion(qIndex) {
+    const draft = currentDraftQuiz || currentActiveQuiz;
+    if (!draft || !draft.questions) return;
+
+    if (draft.questions.length <= 1) {
+        alert("A quiz must have at least one question. If you wish to discard the entire quiz, click Discard.");
+        return;
+    }
+
+    const questionNum = qIndex + 1;
+    let confirmMsg = `Are you sure you want to delete Question ${questionNum}? This action cannot be undone.`;
+    if (draft.deployed) {
+        confirmMsg = `This quiz was deployed to Canvas. Deleting Question ${questionNum} will update the draft and reset its deployed status so you can review and re-deploy cleanly. Continue?`;
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    if (draft.id) {
+        try {
+            const res = await fetch(`/api/quizzes/${draft.id}/questions/${qIndex}`, {
+                method: "DELETE",
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.detail || "Failed to delete question from server.");
+            }
+            if (data.quiz) {
+                currentDraftQuiz = data.quiz;
+                currentActiveQuiz = data.quiz;
+            } else {
+                draft.questions.splice(qIndex, 1);
+                if (draft.deployed) draft.deployed = false;
+            }
+        } catch (err) {
+            console.error("Error deleting question:", err);
+            alert(err.message || "Could not delete question.");
+            return;
+        }
+    } else {
+        draft.questions.splice(qIndex, 1);
+        if (draft.deployed) draft.deployed = false;
+    }
+
+    renderDraftEditor();
+    if (typeof fetchQuizzesOverview === "function") {
+        fetchQuizzesOverview().catch(() => {});
+    }
+}
+
+async function saveQuestionEdit(qIndex) {
     const draft = currentDraftQuiz || currentActiveQuiz;
     if (!draft) return;
     const qText = document.getElementById(`edit-qtext-${qIndex}`).value;
@@ -820,10 +905,148 @@ function saveQuestionEdit(qIndex) {
         });
     }
 
+    if (draft.id) {
+        try {
+            const res = await fetch(`/api/quizzes/${draft.id}/questions/${qIndex}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(q),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.quiz) {
+                currentDraftQuiz = data.quiz;
+                currentActiveQuiz = data.quiz;
+            }
+        } catch (err) {
+            console.error("Error saving question edit to server:", err);
+        }
+    }
+
     renderDraftEditor();
 }
 
+let draftSavedBannerTimeout = null;
+
+function dismissDraftSavedBanner() {
+    if (draftSavedBannerTimeout) {
+        clearTimeout(draftSavedBannerTimeout);
+        draftSavedBannerTimeout = null;
+    }
+    const banner = document.getElementById("draft-saved-banner");
+    if (banner) banner.style.display = "none";
+}
+
+function promptEditTitle() {
+    const draft = currentDraftQuiz || currentActiveQuiz;
+    if (!draft) return;
+    const currentTitle = draft.quiz_title || "Week 1 Quiz";
+    const newTitle = prompt("Enter quiz title:", currentTitle);
+    if (newTitle !== null && newTitle.trim() && newTitle.trim() !== currentTitle) {
+        draft.quiz_title = newTitle.trim();
+        const leftInput = document.getElementById("quiz-title");
+        if (leftInput) leftInput.value = draft.quiz_title;
+        renderDraftEditor();
+    }
+}
+
+async function saveCurrentDraft() {
+    const draft = currentDraftQuiz || currentActiveQuiz;
+    if (!draft || !draft.questions || draft.questions.length === 0) {
+        alert("There is no quiz draft to save.");
+        return;
+    }
+
+    const saveBtn = document.getElementById("btn-save-draft");
+    const originalHtml = saveBtn ? saveBtn.innerHTML : "Save Draft";
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving…`;
+    }
+
+    try {
+        if (draft.id) {
+            const res = await fetch(`/api/quizzes/${draft.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    id: draft.id,
+                    quiz_title: draft.quiz_title,
+                    questions: draft.questions,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.detail || "Could not save draft to server.");
+            }
+            if (data.quiz) {
+                currentDraftQuiz = data.quiz;
+                currentActiveQuiz = data.quiz;
+            }
+        }
+
+        renderDraftEditor();
+
+        // Show prominent success banner
+        dismissDraftSavedBanner();
+        const banner = document.getElementById("draft-saved-banner");
+        if (banner) {
+            banner.style.display = "flex";
+            banner.innerHTML = `
+                <div class="banner-message">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>Draft saved! Find this and other drafts in your Quiz Library.</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="goToLibraryDraft('${draft.id}')">
+                        View in Quiz Library <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                    <button type="button" class="action-icon-btn" onclick="dismissDraftSavedBanner()" title="Dismiss"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            `;
+            banner.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            draftSavedBannerTimeout = setTimeout(() => {
+                dismissDraftSavedBanner();
+            }, 8000);
+        }
+
+        if (typeof fetchQuizzesOverview === "function") {
+            fetchQuizzesOverview().catch(() => {});
+        }
+
+        if (saveBtn) {
+            saveBtn.innerHTML = `<i class="fa-solid fa-check"></i> Saved!`;
+            setTimeout(() => {
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalHtml;
+                }
+            }, 1200);
+        }
+    } catch (err) {
+        console.error("Error saving draft:", err);
+        alert(err.message || "Failed to save draft.");
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalHtml;
+        }
+    }
+}
+
+async function goToLibraryDraft(quizId) {
+    dismissDraftSavedBanner();
+    if (typeof switchView === "function") {
+        switchView("quizzes");
+    }
+    if (typeof fetchQuizzesOverview === "function") {
+        await fetchQuizzesOverview();
+    }
+    if (typeof highlightQuizRow === "function" && quizId) {
+        setTimeout(() => highlightQuizRow(quizId), 150);
+    }
+}
+
 function clearDraftEditor() {
+    dismissDraftSavedBanner();
     currentDraftQuiz = null;
     currentActiveQuiz = null;
     const previewContent = document.getElementById("draft-editor-content") || document.getElementById("quiz-preview-content");

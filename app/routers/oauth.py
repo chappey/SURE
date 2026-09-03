@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 from urllib.parse import urlencode
 
@@ -16,6 +17,9 @@ from app.canvas_oauth import exchange_code_for_token, fetch_users_self, store_to
 
 logger = logging.getLogger("easylearn")
 router = APIRouter(prefix="/oauth", tags=["oauth"])
+
+# Only a short error token is ever echoed back into responses.
+_ERROR_TOKEN_RE = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 
 
 @router.get("/login")
@@ -55,12 +59,15 @@ def oauth_callback(
     """Exchange the authorization code for a user access token."""
     require_lti_launch(request)
     if error:
-        raise HTTPException(status_code=400, detail=f"Canvas authorization failed: {error}")
+        # Reflect only a sanitized token — never the raw query value.
+        match = _ERROR_TOKEN_RE.fullmatch(str(error))
+        safe_error = match.group(0) if match else "unknown_error"
+        raise HTTPException(status_code=400, detail=f"Canvas authorization failed: {safe_error}")
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code.")
 
     saved_state = request.session.get("oauth_state")
-    if not saved_state or state != saved_state:
+    if not saved_state or not state or not secrets.compare_digest(str(state), str(saved_state)):
         raise HTTPException(status_code=400, detail="Invalid state parameter. CSRF verification failed.")
     request.session.pop("oauth_state", None)
 

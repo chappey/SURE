@@ -159,13 +159,20 @@ class TestResolveModel:
 
 
 class TestListModelsForApi:
-    def test_includes_all_models(self, monkeypatch, ai_models_json):
+    def test_includes_only_picker_models(self, monkeypatch, ai_models_json):
         monkeypatch.setattr("app.llm.catalog.CATALOG_PATH", ai_models_json)
         monkeypatch.setattr("app.llm.catalog.config.GEMINI_API_KEY", "key")
         monkeypatch.setattr("app.llm.catalog.config.OPENROUTER_API_KEY", "key")
         result = list_models_for_api()
-        assert len(result["models"]) == 3
+        assert [m["id"] for m in result["models"]] == ["model-a", "model-b"]
         assert result["auto_model_id"] == "model-a"
+
+    def test_hidden_model_still_resolves(self, monkeypatch, ai_models_json):
+        monkeypatch.setattr("app.llm.catalog.CATALOG_PATH", ai_models_json)
+        monkeypatch.setattr("app.llm.catalog.config.OPENROUTER_API_KEY", "key")
+        result = list_models_for_api()
+        assert "model-c" not in [m["id"] for m in result["models"]]
+        assert resolve_model("model-c").id == "model-c"
 
 
 #
@@ -177,7 +184,64 @@ class TestFallbackModels:
         monkeypatch.setattr("app.llm.catalog.config.GEMINI_API_KEY", "key")
         monkeypatch.setattr("app.llm.catalog.config.OPENROUTER_API_KEY", "key")
         models = fallback_models()
-        assert len(models) == 3
+        assert len(models) == 2
+
+    def test_auto_uses_only_flagged_models(self, monkeypatch, tmp_path):
+        data = [
+            {
+                "id": "slow-free",
+                "label": "Slow Free",
+                "provider": "openrouter",
+                "model": "free/slow",
+                "expects_free": True,
+            },
+            {
+                "id": "fast-paid",
+                "label": "Fast Paid",
+                "provider": "openrouter",
+                "model": "paid/fast",
+                "use_in_auto": True,
+            },
+            {
+                "id": "other-paid",
+                "label": "Other Paid",
+                "provider": "openrouter",
+                "model": "paid/other",
+            },
+        ]
+        path = tmp_path / "auto_flag.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        monkeypatch.setattr("app.llm.catalog.CATALOG_PATH", path)
+        monkeypatch.setattr("app.llm.catalog.config.OPENROUTER_API_KEY", "key")
+        monkeypatch.setattr("app.llm.catalog.config.GEMINI_API_KEY", "")
+        models = fallback_models()
+        assert [m.id for m in models] == ["fast-paid"]
+
+    def test_auto_router_is_queued_twice(self, monkeypatch, tmp_path):
+        data = [
+            {
+                "id": "or-auto",
+                "label": "OpenRouter Auto",
+                "provider": "openrouter",
+                "model": "openrouter/auto",
+                "use_in_auto": True,
+                "default": True,
+            },
+            {
+                "id": "or-luna",
+                "label": "Luna",
+                "provider": "openrouter",
+                "model": "openai/gpt-5.6-luna",
+            },
+        ]
+        path = tmp_path / "auto_router.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        monkeypatch.setattr("app.llm.catalog.CATALOG_PATH", path)
+        monkeypatch.setattr("app.llm.catalog.config.OPENROUTER_API_KEY", "key")
+        monkeypatch.setattr("app.llm.catalog.config.GEMINI_API_KEY", "")
+        monkeypatch.setattr("app.llm.fallback.config.AUTO_MAX_MODELS", 2)
+        models = fallback_models()
+        assert [m.model for m in models] == ["openrouter/auto", "openrouter/auto"]
 
     def test_primary_is_first_when_requested(self, monkeypatch, ai_models_json):
         monkeypatch.setattr("app.llm.catalog.CATALOG_PATH", ai_models_json)
@@ -205,7 +269,7 @@ class TestGenerateJsonWithFallback:
     def test_returns_first_success(self):
         model_a = MagicMock(id="a", provider="openrouter", model="a")
 
-        def fake_generate_json(model, prompt, schema):
+        def fake_generate_json(model, prompt, schema, **kwargs):
             if model.id == "a":
                 return '{"ok": true}'
             raise RuntimeError("should not be called")
@@ -216,7 +280,7 @@ class TestGenerateJsonWithFallback:
             assert entry.id == "a"
 
     def test_falls_through_on_failure(self):
-        def always_fails(model, prompt, schema):
+        def always_fails(model, prompt, schema, **kwargs):
             raise RuntimeError("fail")
 
         models = [
@@ -229,7 +293,7 @@ class TestGenerateJsonWithFallback:
             assert len(exc.value.errors) == 2
 
     def test_returns_empty_string_triggers_fallback(self):
-        def empty_on_first(model, prompt, schema):
+        def empty_on_first(model, prompt, schema, **kwargs):
             if model.id == "first":
                 return ""
             return '{"ok": true}'
@@ -240,6 +304,27 @@ class TestGenerateJsonWithFallback:
         ]
         with patch("app.llm.fallback._generate_json", side_effect=empty_on_first):
             text, entry = generate_json_with_fallback(models, "prompt", {})
+            assert text == '{"ok": true}'
+            assert entry.id == "second"
+
+    def test_invalid_payload_triggers_fallback(self):
+        def bad_then_good(model, prompt, schema, **kwargs):
+            if model.id == "first":
+                return "not-json"
+            return '{"ok": true}'
+
+        def accept(text: str) -> None:
+            if text != '{"ok": true}':
+                raise ValueError("invalid quiz json")
+
+        models = [
+            MagicMock(id="first", provider="openrouter", model="first"),
+            MagicMock(id="second", provider="openrouter", model="second"),
+        ]
+        with patch("app.llm.fallback._generate_json", side_effect=bad_then_good):
+            text, entry = generate_json_with_fallback(
+                models, "prompt", {}, validate=accept
+            )
             assert text == '{"ok": true}'
             assert entry.id == "second"
 
@@ -356,3 +441,23 @@ class TestFormatLlmError:
         code, msg = format_llm_error(exc)
         assert code == 503
         assert "temporarily unavailable" in msg
+
+
+class TestAutoRouterPlugin:
+    def test_auto_slug_sends_cost_tier_not_tradeoff(self, monkeypatch):
+        from app.llm.providers.openrouter import auto_router_extra_body
+
+        monkeypatch.setattr("app.config.AUTO_ROUTER_COST_TIER", "low")
+        extra = auto_router_extra_body("openrouter/auto")
+        plugin = extra["plugins"][0]
+        assert plugin["id"] == "auto-router"
+        assert plugin["cost_tier"] == "low"
+        assert plugin["excluded_models"] == ["*:free", "openrouter/free"]
+        assert "allowed_models" not in plugin
+        assert "cost_quality_tradeoff" not in extra
+        assert "cost_quality_tradeoff" not in plugin
+
+    def test_pinned_slug_has_no_plugin(self):
+        from app.llm.providers.openrouter import auto_router_extra_body
+
+        assert auto_router_extra_body("google/gemini-3.1-flash-lite") == {}

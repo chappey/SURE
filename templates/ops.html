@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyLearn ops</title>
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;600;700&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/ops.css">
+</head>
+<body>
+    <header class="ops-header">
+        <div>
+            <h1>EasyLearn ops</h1>
+            <p id="ops-updated">Loading…</p>
+        </div>
+        <div class="ops-header-actions">
+            <button type="button" class="ops-btn" id="ops-refresh">Refresh</button>
+            <form method="post" action="/ops/logout">
+                <button type="submit" class="ops-btn ops-btn-ghost">Sign out</button>
+            </form>
+        </div>
+    </header>
+
+    <main class="ops-main">
+        <section class="ops-stats" id="ops-stats"></section>
+
+        <section class="ops-panel">
+            <h2>OpenRouter account</h2>
+            <div id="ops-openrouter" class="ops-muted">Checking key status…</div>
+        </section>
+
+        <section class="ops-panel">
+            <h2>Spend today (UTC)</h2>
+            <p class="ops-caption">Local ledger of billed OpenRouter calls. Gemini rows may show cost as n/a.</p>
+            <div class="ops-table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th class="num">Calls</th>
+                            <th class="num">Failures</th>
+                            <th class="num">Tokens</th>
+                            <th class="num">Spend (USD)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ops-users"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="ops-panel">
+            <h2>Model health</h2>
+            <p class="ops-caption">Circuit opens after consecutive provider 5xx / 429 / transport failures. Healthy alternatives are preferred in auto fallback.</p>
+            <div class="ops-table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th>Status</th>
+                            <th class="num">7d calls</th>
+                            <th class="num">7d fail</th>
+                            <th class="num">7d spend</th>
+                            <th>Last error</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ops-models"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="ops-two">
+            <section class="ops-panel">
+                <h2>Recent LLM calls</h2>
+                <div class="ops-table-wrap ops-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>When</th>
+                                <th>User</th>
+                                <th>Purpose</th>
+                                <th>Model</th>
+                                <th>Result</th>
+                                <th class="num">ms</th>
+                                <th class="num">USD</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ops-calls"></tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="ops-panel">
+                <h2>Alerts</h2>
+                <p class="ops-caption" id="ops-alert-config"></p>
+                <ul id="ops-alerts" class="ops-alerts"></ul>
+            </section>
+        </section>
+
+        <section class="ops-panel">
+            <h2>Caps in force</h2>
+            <dl id="ops-limits" class="ops-limits"></dl>
+        </section>
+    </main>
+    <script src="/static/js/ops.js"></script>
+</body>
+</html>

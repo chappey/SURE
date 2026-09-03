@@ -1,8 +1,9 @@
 """Canvas OAuth2 token exchange, refresh, and session storage helpers.
 
 Keeps the per-professor token lifecycle out of the route handlers so
-`app/routers/oauth.py` stays thin. The refresh token and expiry live in the
-encrypted session only -- never logged.
+`app/routers/oauth.py` stays thin. Tokens live in the server-side session and
+are never logged. Note: Starlette's SessionMiddleware *signs* (does not
+encrypt) its cookies — treat any cookie exfiltration as token compromise.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ def _token_request_headers() -> dict[str, str]:
     """
     headers: dict[str, str] = {}
     if config.LOCAL_HTTP_LTI:
-        internal = (getattr(config, "CANVAS_INTERNAL_HOST", "") or "").strip()
+        internal = (config.CANVAS_INTERNAL_HOST or "").strip()
         if not internal:
             # Heuristic: if the configured API hostname looks docker-ish, use it.
             try:
@@ -60,9 +61,8 @@ def exchange_code_for_token(code: str, redirect_uri: str) -> dict:
         _token_url(), data=payload, headers=_token_request_headers(), timeout=30
     )
     if not response.ok:
-        logger.warning(
-            "OAuth token exchange failed: %s %s", response.status_code, response.text[:500]
-        )
+        # Log status only — token-endpoint bodies can echo credentials/codes.
+        logger.warning("OAuth token exchange failed: HTTP %s", response.status_code)
         raise ValueError("Failed to exchange authorization code with Canvas.")
     return response.json()
 
@@ -82,9 +82,7 @@ def refresh_access_token(refresh_token: str) -> dict:
         _token_url(), data=payload, headers=_token_request_headers(), timeout=30
     )
     if not response.ok:
-        logger.warning(
-            "OAuth token refresh failed: %s %s", response.status_code, response.text[:500]
-        )
+        logger.warning("OAuth token refresh failed: HTTP %s", response.status_code)
         raise ValueError("Failed to refresh Canvas access token.")
     return response.json()
 
@@ -132,9 +130,7 @@ def fetch_users_self(access_token: str) -> dict:
         timeout=30,
     )
     if not response.ok:
-        logger.warning(
-            "users/self failed: %s %s", response.status_code, response.text[:300]
-        )
+        logger.warning("users/self failed: HTTP %s", response.status_code)
         response.raise_for_status()
     return response.json()
 

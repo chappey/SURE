@@ -5,10 +5,13 @@ from __future__ import annotations
 import logging
 import time
 
+from app import config
 from app.llm.catalog import ModelEntry, resolve_model
+from app.llm.providers.openrouter import last_routed_model
 from app.llm.errors import format_llm_error
 from app.llm.fallback import fallback_models, generate_json_with_fallback
 from app.llm.registry import generate_json as provider_generate_json
+from app.ops.context import llm_purpose
 from app.schemas import DraftQuiz, validate_questions
 
 logger = logging.getLogger(__name__)
@@ -130,9 +133,8 @@ def generate_weekly_quiz(
 ) -> tuple[DraftQuiz, ModelEntry]:
     """Generate a quiz using the selected model from the catalog (or auto-select).
 
-    When ``model_id`` is None, the system tries all available models in catalog
-    order (fallback queue). When a specific ``model_id`` is given, only that
-    model is used.
+    When ``model_id`` is None, Auto uses ``openrouter/auto`` (up to two
+    attempts). When a specific ``model_id`` is given, only that model is used.
     """
     from app.retrieval import select_material
 
@@ -155,19 +157,38 @@ def generate_weekly_quiz(
     schema = DraftQuiz.model_json_schema()
     t0 = time.perf_counter()
 
-    if model_id is None:
-        models = fallback_models(requested_id=None)
-        logger.info(
-            "Generating quiz: Auto mode, %d model(s) available",
-            len(models),
-        )
-        text, entry = generate_json_with_fallback(models, prompt, schema)
-    else:
-        entry = resolve_model(model_id)
-        logger.info(
-            "Generating quiz via %s (%s/%s)", entry.id, entry.provider, entry.model
-        )
-        text = provider_generate_json(entry, prompt, schema)
+    def _accept_quiz_json(raw: str) -> None:
+        quiz = DraftQuiz.model_validate_json(raw)
+        validate_questions(quiz)
+
+    with llm_purpose("quiz_generate"):
+        if model_id is None:
+            models = fallback_models(requested_id=None)
+            logger.info(
+                "Generating quiz: Auto mode, %d model(s) available",
+                len(models),
+            )
+            text, entry = generate_json_with_fallback(
+                models,
+                prompt,
+                schema,
+                validate=_accept_quiz_json,
+                timeout_seconds=config.AUTO_MODEL_TIMEOUT_SECONDS,
+                allow_object_fallback=False,
+            )
+        else:
+            entry = resolve_model(model_id)
+            logger.info(
+                "Generating quiz via %s (%s/%s)", entry.id, entry.provider, entry.model
+            )
+            text = provider_generate_json(entry, prompt, schema)
+
+    if entry.model in ("openrouter/auto", "openrouter/auto-beta"):
+        routed = last_routed_model()
+        if routed:
+            entry = entry.model_copy(
+                update={"model": routed, "label": f"{entry.label} → {routed}"}
+            )
 
     llm_ms = (time.perf_counter() - t0) * 1000
 

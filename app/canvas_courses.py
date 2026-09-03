@@ -49,9 +49,30 @@ def list_teacher_courses(canvas, *, include_course_id: int | None = None) -> lis
 
 
 def course_is_teacher(canvas, course_id: int) -> bool:
-    """Return True if the user can teach in the given course."""
-    if any(c["id"] == course_id for c in list_teacher_courses(canvas, include_course_id=course_id)):
+    """Return True if the token holder holds a real teacher enrollment.
+
+    Strict on purpose: unlike ``list_teacher_courses`` this never falls back to
+    "the token can GET the course", which would let any non-teacher token
+    (e.g. a student or observer) pass the app-level teacher gate.
+    """
+    if any(c["id"] == course_id for c in list_teacher_courses(canvas)):
         return True
+
+    # Cross-check the course's own enrollment list (covers cases where the
+    # account-level course listing omits an active teacher enrollment).
+    try:
+        course = canvas.get_course(course_id)
+        for enrollment in course.get_enrollments(enrollment_type=["teacher"]):
+            state = (
+                getattr(enrollment, "enrollment_state", None)
+                or getattr(enrollment, "workflow_state", None)
+            )
+            if state in (None, "", "active", "invited"):
+                return True
+    except Exception as exc:
+        logger.warning(
+            "Teacher-enrollment check failed for course %s: %s", course_id, exc
+        )
     return False
 
 

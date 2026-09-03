@@ -23,6 +23,8 @@ class ModelEntry(BaseModel):
     model: str
     default: bool = False
     expects_free: bool = False
+    use_in_auto: bool = False
+    show_in_picker: bool = False
     structured_output: StructuredOutputMode = "native"
 
 
@@ -96,6 +98,8 @@ def list_models_for_api() -> dict[str, Any]:
     """Catalog payload for the dashboard, including auto-selection helpers."""
     models: list[dict[str, Any]] = []
     for entry in load_catalog():
+        if not entry.show_in_picker:
+            continue
         available = _provider_configured(entry.provider)
         models.append(
             {

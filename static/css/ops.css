@@ -1,0 +1,161 @@
+/* Operator dashboard — same InstUI tokens as the instructor UI. */
+
+:root {
+    --brand-primary: #0374B5;
+    --text-body: #2D3B45;
+    --text-muted: #6B7780;
+    --bg-page: #F2F4F4;
+    --bg-surface: #FFFFFF;
+    --border: #C7CDD1;
+    --success: #03893D;
+    --success-bg: #E6F4EA;
+    --danger: #E62429;
+    --danger-bg: #FCE8E8;
+    --warning-bg: #FFF5E6;
+    --warning-text: #854F00;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Lato, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    background: var(--bg-page);
+    color: var(--text-body);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.ops-login-body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ops-login {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem;
+    width: 360px;
+}
+
+.ops-login h1 { font-size: 1.25rem; margin-bottom: 0.35rem; }
+.ops-login p { color: var(--text-muted); margin-bottom: 1rem; }
+.ops-login label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+.ops-login input {
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font: inherit;
+    margin-bottom: 1rem;
+}
+.ops-login button, .ops-btn {
+    background: var(--brand-primary);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 0.5rem 0.9rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.ops-btn-ghost {
+    background: transparent;
+    color: var(--text-body);
+    border: 1px solid var(--border);
+}
+.ops-error { color: var(--danger); margin-bottom: 0.75rem; }
+
+.ops-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 1.25rem 1.75rem;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+}
+.ops-header h1 { font-size: 1.25rem; }
+.ops-header p { color: var(--text-muted); }
+.ops-header-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+.ops-main { padding: 1.25rem 1.75rem 2.5rem; max-width: 1200px; }
+
+.ops-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+.ops-stat {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.9rem 1rem;
+}
+.ops-stat .label { color: var(--text-muted); font-size: 12px; }
+.ops-stat .value { font-size: 1.35rem; font-weight: 700; margin-top: 0.15rem; }
+.ops-stat .sub { color: var(--text-muted); font-size: 12px; }
+
+.ops-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.1rem 1.15rem;
+    margin-bottom: 1rem;
+}
+.ops-panel h2 { font-size: 1rem; margin-bottom: 0.35rem; }
+.ops-caption, .ops-muted { color: var(--text-muted); font-size: 13px; margin-bottom: 0.75rem; }
+
+.ops-table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #E8EAEC; }
+th { color: var(--text-muted); font-weight: 600; font-size: 12px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.ops-scroll { max-height: 360px; overflow: auto; }
+
+.ops-two {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 1rem;
+}
+@media (max-width: 900px) {
+    .ops-two { grid-template-columns: 1fr; }
+}
+
+.pill {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+    font-size: 12px;
+    font-weight: 600;
+}
+.pill-up { background: var(--success-bg); color: var(--success); }
+.pill-down { background: var(--danger-bg); color: var(--danger); }
+.pill-degraded { background: var(--warning-bg); color: var(--warning-text); }
+.pill-ok { background: var(--success-bg); color: var(--success); }
+.pill-fail { background: var(--danger-bg); color: var(--danger); }
+
+.ops-alerts { list-style: none; max-height: 360px; overflow: auto; }
+.ops-alerts li { padding: 0.45rem 0; border-bottom: 1px solid #E8EAEC; }
+.ops-alerts .when { color: var(--text-muted); font-size: 12px; }
+
+.ops-limits {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.4rem 1.5rem;
+}
+.ops-limits dt { color: var(--text-muted); font-size: 12px; }
+.ops-limits dd { font-weight: 600; margin-bottom: 0.5rem; }
+
+.bar {
+    height: 8px;
+    background: #E8EAEC;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 0.45rem;
+}
+.bar > span { display: block; height: 100%; background: var(--brand-primary); }
+.bar.warn > span { background: #C97800; }
+.bar.crit > span { background: var(--danger); }

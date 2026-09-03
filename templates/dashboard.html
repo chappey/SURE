@@ -215,9 +215,13 @@
                     </div>
 
                     <div class="quiz-preview-content" id="quiz-preview-content">
+                        <div class="draft-saved-banner" id="draft-saved-banner" style="display: none;"></div>
                         <div class="preview-header">
                             <div>
-                                <h3 id="preview-quiz-title" class="preview-quiz-title">Week 1 Quiz</h3>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <h3 id="preview-quiz-title" class="preview-quiz-title" style="margin: 0;">Week 1 Quiz</h3>
+                                    <button type="button" class="action-icon-btn" id="btn-edit-title" onclick="promptEditTitle()" title="Rename quiz title"><i class="fa-solid fa-pen"></i></button>
+                                </div>
                                 <span id="preview-meta-tag" class="preview-meta-tag"></span>
                                 <span id="preview-model-label" class="preview-model-label" hidden></span>
                             </div>
@@ -230,7 +234,8 @@
                             <p id="deploy-canvas-count" class="deploy-canvas-count" hidden></p>
                             <div class="preview-actions-row">
                                 <button type="button" class="btn btn-secondary" onclick="resetPreview()">Discard</button>
-                                <button type="button" class="btn btn-primary" onclick="deployQuiz()">Deploy to Canvas</button>
+                                <button type="button" class="btn btn-secondary" id="btn-save-draft" onclick="saveCurrentDraft()"><i class="fa-regular fa-floppy-disk"></i> Save Draft</button>
+                                <button type="button" class="btn btn-primary" id="btn-deploy-quiz" onclick="deployQuiz()">Deploy to Canvas</button>
                             </div>
                         </div>
                     </div>
@@ -251,13 +256,14 @@
                             <tr>
                                 <th>Title</th>
                                 <th>Module</th>
+                                <th>Questions</th>
                                 <th>Status</th>
                                 <th>Comments</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="quizzes-table-body">
-                            <tr><td colspan="5" class="empty-cell">Loading...</td></tr>
+                            <tr><td colspan="6" class="empty-cell">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>

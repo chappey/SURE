@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     CANVAS_OAUTH_REDIRECT_URI: str = ""
     # Space-separated Canvas API scopes — only when the OAuth key enforces scopes.
     CANVAS_OAUTH_SCOPES: str = ""
+    # Internal hostname for Host headers on local Docker Canvas (see docs).
+    CANVAS_INTERNAL_HOST: str = ""
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
     OPENROUTER_API_KEY: str = ""
@@ -37,6 +39,27 @@ class Settings(BaseSettings):
     RAG_ENABLED: bool = False
     OCR_ENABLED: bool = False
     RAG_MAX_TOKENS: int = 12000
+
+    # Operator dashboard. Empty disables /ops entirely (fail closed).
+    OPS_ADMIN_TOKEN: str = ""
+    # Generic webhook (Discord / Slack incoming / ntfy). Empty = no outbound alerts.
+    ALERT_WEBHOOK_URL: str = ""
+    ALERT_MIN_INTERVAL_SECONDS: int = 300
+
+    RATE_LIMIT_GENERATE_PER_MIN: int = 10
+    RATE_LIMIT_FEEDBACK_PER_MIN: int = 6
+
+    USER_DAILY_SPEND_USD: float = 2.0
+    GLOBAL_DAILY_SPEND_USD: float = 20.0
+    USER_DAILY_LLM_CALLS: int = 40
+    GLOBAL_DAILY_LLM_CALLS: int = 200
+    BUDGET_WARN_RATIO: float = 0.8
+
+    MODEL_CIRCUIT_FAILURES: int = 3
+    MODEL_CIRCUIT_OPEN_SECONDS: int = 600
+    OPS_HEALTH_POLL_SECONDS: int = 120
+    # OpenRouter Auto Router cost band: low | medium | high | xhigh | max
+    AUTO_ROUTER_COST_TIER: str = "low"
 
 
 
@@ -170,6 +193,10 @@ LTI_CONFIG_PATH = PROJECT_ROOT / "config" / "lti_config.json"
 
 # Timeout for individual LLM provider API calls (seconds).
 LLM_TIMEOUT_SECONDS = 300
+# Auto runs in a background job, so the HTTP timeout is the only ceiling.
+# Keep it under a minute per attempt; the UI polls instead of holding a request.
+AUTO_MODEL_TIMEOUT_SECONDS = 60
+AUTO_MAX_MODELS = 2
 
 # Backward-compatible module-level exports (used across app/ and utils/)
 CANVAS_API_URL = settings.CANVAS_API_URL
@@ -178,6 +205,7 @@ CANVAS_CLIENT_ID = settings.CANVAS_CLIENT_ID
 CANVAS_CLIENT_SECRET = settings.CANVAS_CLIENT_SECRET
 CANVAS_OAUTH_REDIRECT_URI = settings.CANVAS_OAUTH_REDIRECT_URI
 CANVAS_OAUTH_SCOPES = settings.CANVAS_OAUTH_SCOPES
+CANVAS_INTERNAL_HOST = settings.CANVAS_INTERNAL_HOST
 GEMINI_API_KEY = settings.GEMINI_API_KEY
 GEMINI_MODEL = settings.GEMINI_MODEL
 OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY
@@ -187,3 +215,17 @@ SESSION_SECRET_KEY = settings.SESSION_SECRET_KEY
 RAG_ENABLED = settings.RAG_ENABLED
 OCR_ENABLED = settings.OCR_ENABLED
 RAG_MAX_TOKENS = settings.RAG_MAX_TOKENS
+OPS_ADMIN_TOKEN = settings.OPS_ADMIN_TOKEN
+ALERT_WEBHOOK_URL = settings.ALERT_WEBHOOK_URL
+ALERT_MIN_INTERVAL_SECONDS = settings.ALERT_MIN_INTERVAL_SECONDS
+RATE_LIMIT_GENERATE_PER_MIN = settings.RATE_LIMIT_GENERATE_PER_MIN
+RATE_LIMIT_FEEDBACK_PER_MIN = settings.RATE_LIMIT_FEEDBACK_PER_MIN
+USER_DAILY_SPEND_USD = settings.USER_DAILY_SPEND_USD
+GLOBAL_DAILY_SPEND_USD = settings.GLOBAL_DAILY_SPEND_USD
+USER_DAILY_LLM_CALLS = settings.USER_DAILY_LLM_CALLS
+GLOBAL_DAILY_LLM_CALLS = settings.GLOBAL_DAILY_LLM_CALLS
+BUDGET_WARN_RATIO = settings.BUDGET_WARN_RATIO
+MODEL_CIRCUIT_FAILURES = settings.MODEL_CIRCUIT_FAILURES
+MODEL_CIRCUIT_OPEN_SECONDS = settings.MODEL_CIRCUIT_OPEN_SECONDS
+OPS_HEALTH_POLL_SECONDS = settings.OPS_HEALTH_POLL_SECONDS
+AUTO_ROUTER_COST_TIER = settings.AUTO_ROUTER_COST_TIER

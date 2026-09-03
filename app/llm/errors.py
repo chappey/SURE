@@ -74,10 +74,17 @@ def format_llm_error(exc: Exception, model: ModelEntry | None = None) -> tuple[i
     if isinstance(exc, AllModelsFailedError):
         return 503, exc.user_message
 
-    if isinstance(exc, ValueError):
-        return 400, str(exc)
+    # Catch Pydantic validation errors and JSON parsing failures
+    exc_type = type(exc).__name__
+    if "ValidationError" in exc_type or isinstance(exc, (ValueError, UnicodeDecodeError)):
+        logger.warning("LLM response validation error (%s): %s", exc_type, exc)
+        return 422, prefix + "The AI model returned an invalid response format. Please try again or switch models."
 
     if isinstance(exc, RuntimeError):
-        return 500, prefix + str(exc)
+        # Don't leak raw internal runtime traces
+        msg = str(exc)
+        if "empty response" in msg.lower():
+            return 502, prefix + "The AI model returned an empty response. Please try again or switch models."
+        return 500, prefix + "Quiz generation encountered a server error. Please try again."
 
-    return 500, prefix + "Quiz generation failed unexpectedly. Please try again or switch models."
+    return 500, prefix + "Quiz generation failed. Please try again or switch models."
