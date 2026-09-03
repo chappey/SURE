@@ -6,7 +6,7 @@ import json
 from functools import lru_cache
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import config
 
@@ -26,6 +26,7 @@ class ModelEntry(BaseModel):
     use_in_auto: bool = False
     show_in_picker: bool = False
     structured_output: StructuredOutputMode = "native"
+    prompt_instructions: list[str] = Field(default_factory=list)
 
 
 def _provider_configured(provider: ProviderName) -> bool:

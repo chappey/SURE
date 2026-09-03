@@ -32,6 +32,8 @@ def _build_prompt(
     custom_instructions: str = "",
     difficulty_counts: dict[str, int] | None = None,
     professor_memories: list[str] | None = None,
+    model_instructions: list[str] | None = None,
+    course_name: str | None = None,
 ) -> str:
     requirements = []
     total_qs = num_mc + num_tf + num_matching
@@ -84,6 +86,14 @@ def _build_prompt(
                 f"- Professor Tastes, Terminology & Style Preferences (MUST follow strictly):\n{items}"
             )
 
+    if model_instructions:
+        clean_model_inst = [m.strip() for m in model_instructions if m and m.strip()]
+        if clean_model_inst:
+            items = "\n".join(f"  * {m}" for m in clean_model_inst)
+            requirements.append(
+                f"- Model-Specific Generation Rules (Mandatory):\n{items}"
+            )
+
     req_str = "\n".join(requirements)
 
     if include_answer_feedback:
@@ -96,7 +106,9 @@ def _build_prompt(
             "- correct_comments and incorrect_comments: leave both as empty strings.\n"
         )
 
-    return f"""You are a university CS instructor writing a formative quiz for students who studied ONLY the material below.
+    course_context = f" teaching '{course_name.strip()}'" if course_name and course_name.strip() else ""
+
+    return f"""You are a university instructor{course_context} writing a formative quiz for students who studied ONLY the material below.
 
 Week/Module: {week_name}
 
@@ -104,19 +116,20 @@ Hard requirements:
 {req_str}
 
 Grounding rules (non-negotiable):
-- Use ONLY facts, definitions, complexities, algorithms, and mechanisms that appear in the material.
+- Use ONLY facts, definitions, mechanisms, concepts, and relationships that appear in the material.
 - Do NOT invent numbers, slide counts, "N concepts", outside trivia, or facts not in the text.
 - Do NOT ask meta-questions about the deck structure (e.g. "how many slides", "Concept 1.1").
 - A careful student who studied this material must be able to select the keyed answer.
 - Exactly ONE option has answer_weight=100; all other options answer_weight=0.
 - Incorrect options must be wrong for THIS stem (no two right answers). Other true facts from elsewhere in the material must not also fully answer the question.
-- Prefer testing: named definitions, Big-O / costs, data-structure tradeoffs, OS mechanisms, protocol behaviors, etc.
+- Prefer testing: core definitions, fundamental mechanisms, conceptual principles, key terminology, relationships, and problem-solving application directly grounded in the text.
 - Prefer paraphrases of the material over pure keyword matching when possible, but stay faithful.
 - For true/false: the statement must be clearly true or false from the material alone.
+- Formatting & Syntax: Write chemical formulas, exponents, and mathematical expressions using standard Unicode (e.g. sp³, H₂O, CO₂, ΔH, →, °C) or clean HTML tags (<sub>, <sup>). Do NOT use raw LaTeX enclosing tokens ($...$, $$...$$, \\( ... \\)).
 
 Format:
-- question_name: short label (e.g. "Q1: Big-O upper bound").
-- question_text: clear stem (simple HTML like <p> is OK).
+- question_name: short label (e.g. "Q1: Hybridization geometry").
+- question_text: clear stem (simple HTML like <p>, <sub>, <sup> is OK).
 - difficulty: 'easy', 'medium', or 'hard'.
 {feedback_guideline}- quiz_title: concise title like "{week_name} Quiz".
 
@@ -140,6 +153,7 @@ def generate_weekly_quiz(
     custom_instructions: str = "",
     model_id: str | None = None,
     professor_memories: list[str] | None = None,
+    course_name: str | None = None,
 ) -> tuple[DraftQuiz, ModelEntry]:
     """Generate a quiz using the selected model from the catalog (or auto-select).
 
@@ -149,6 +163,16 @@ def generate_weekly_quiz(
     from app.retrieval import select_material
 
     material_text = select_material(material_text, query=week_name)
+
+    # Determine model-specific prompt instructions
+    model_instructions: list[str] = []
+    if model_id:
+        target_entry = resolve_model(model_id)
+        model_instructions = getattr(target_entry, "prompt_instructions", []) or []
+    else:
+        auto_models = fallback_models(requested_id=None)
+        if auto_models:
+            model_instructions = getattr(auto_models[0], "prompt_instructions", []) or []
 
     prompt = _build_prompt(
         week_name=week_name,
@@ -162,6 +186,8 @@ def generate_weekly_quiz(
         custom_instructions=custom_instructions,
         difficulty_counts=difficulty_counts,
         professor_memories=professor_memories,
+        model_instructions=model_instructions,
+        course_name=course_name,
     )
 
 

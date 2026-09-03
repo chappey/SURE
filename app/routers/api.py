@@ -357,6 +357,8 @@ def api_generate_quiz(
         )
         active_memories = get_active_memories_for_generation(user_key, course_id)
 
+        course_name = request.session.get("course_name")
+
         def _run() -> None:
             generate_jobs.set_running(job_id)
             ops_context.bind_snapshot(ident)
@@ -376,6 +378,7 @@ def api_generate_quiz(
                     custom_instructions=body.custom_instructions,
                     model_id=body.model_id,
                     professor_memories=active_memories,
+                    course_name=course_name,
                 )
                 if body.quiz_title:
                     quiz.quiz_title = body.quiz_title

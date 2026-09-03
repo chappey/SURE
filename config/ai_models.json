@@ -7,7 +7,12 @@
     "default": true,
     "use_in_auto": true,
     "show_in_picker": true,
-    "structured_output": "native"
+    "structured_output": "native",
+    "prompt_instructions": [
+      "Do NOT use LaTeX math syntax ($...$, $$...$$, \\( ... \\), \\text{...}, or \\ce{...}).",
+      "Format chemical formulas, exponents, and reactions using standard Unicode (e.g. sp³, H₂O, CO₂, ΔH, →, °C) or clean HTML (<sub>, <sup>).",
+      "Ensure multiple-choice options are distinct concepts rather than trivial grammatical variations."
+    ]
   },
   {
     "id": "or-gemini-3.7-flash",
@@ -16,7 +21,12 @@
     "model": "google/gemini-3.7-flash",
     "use_in_auto": true,
     "show_in_picker": true,
-    "structured_output": "native"
+    "structured_output": "native",
+    "prompt_instructions": [
+      "Do NOT use LaTeX math syntax ($...$, $$...$$, \\( ... \\), \\text{...}, or \\ce{...}).",
+      "Format chemical formulas, exponents, and reactions using standard Unicode (e.g. sp³, H₂O, CO₂, ΔH, →, °C) or clean HTML (<sub>, <sup>).",
+      "Ensure multiple-choice options are distinct concepts rather than trivial grammatical variations."
+    ]
   },
   {
     "id": "or-gpt-5.6-luna",
@@ -25,7 +35,11 @@
     "model": "openai/gpt-5.6-luna",
     "use_in_auto": true,
     "show_in_picker": true,
-    "structured_output": "native"
+    "structured_output": "native",
+    "prompt_instructions": [
+      "Format chemical formulas and exponents using standard Unicode (sp³, H₂O) or simple HTML (<sub>, <sup>) without LaTeX enclosing tokens.",
+      "Ensure all distractors are plausible misconceptions grounded in the material."
+    ]
   },
   {
     "id": "or-glm-5.3-flash",
@@ -33,7 +47,10 @@
     "provider": "openrouter",
     "model": "z-ai/glm-5.3-flash",
     "show_in_picker": true,
-    "structured_output": "native"
+    "structured_output": "native",
+    "prompt_instructions": [
+      "Format chemical formulas and exponents using standard Unicode (sp³, H₂O) or simple HTML (<sub>, <sup>) without LaTeX enclosing tokens."
+    ]
   },
   {
     "id": "or-deepseek-v4-flash",
@@ -41,7 +58,11 @@
     "provider": "openrouter",
     "model": "deepseek/deepseek-v4-flash-0731",
     "show_in_picker": true,
-    "structured_output": "native"
+    "structured_output": "native",
+    "prompt_instructions": [
+      "Output strictly valid JSON matching the schema without markdown code blocks or reasoning text.",
+      "Format chemical formulas and exponents using standard Unicode (sp³, H₂O) or simple HTML (<sub>, <sup>) without LaTeX enclosing tokens."
+    ]
   },
   {
     "id": "or-minimax-m3-free",
@@ -50,6 +71,9 @@
     "model": "minimax/minimax-m3:free",
     "expects_free": true,
     "show_in_picker": true,
-    "structured_output": "native"
+    "structured_output": "native",
+    "prompt_instructions": [
+      "Format chemical formulas and exponents using standard Unicode (sp³, H₂O) or simple HTML (<sub>, <sup>) without LaTeX enclosing tokens."
+    ]
   }
 ]

@@ -707,9 +707,9 @@ function renderDraftEditor() {
                 answersHTML += `
                     <div class="answer-option correct">
                         <i class="fa-solid fa-left-right" style="color: var(--accent-blue);"></i>
-                        <span style="font-weight: 500; margin-right: 0.5rem;">${escapeHtml(ans.answer_text)}</span>
+                        <span style="font-weight: 500; margin-right: 0.5rem;">${renderSafeRichText(ans.answer_text)}</span>
                         <i class="fa-solid fa-arrow-right-long" style="color: var(--text-muted); margin: 0 0.5rem;"></i>
-                        <span style="color: var(--success); font-weight: 600;">${escapeHtml(ans.answer_match_right)}</span>
+                        <span style="color: var(--success); font-weight: 600;">${renderSafeRichText(ans.answer_match_right)}</span>
                     </div>
                 `;
             });
@@ -719,8 +719,8 @@ function renderDraftEditor() {
                 answersHTML += `
                     <div class="answer-option ${isCorrect ? 'correct' : 'incorrect'}">
                         <i class="${isCorrect ? 'fa-solid fa-circle-check' : 'fa-regular fa-circle'}"></i>
-                        <span style="flex: 1;">${escapeHtml(ans.answer_text)}</span>
-                        ${ans.answer_comments ? `<span style="font-size: 0.75rem; color: var(--accent-blue); font-style: italic;">(${escapeHtml(ans.answer_comments)})</span>` : ''}
+                        <span style="flex: 1;">${renderSafeRichText(ans.answer_text)}</span>
+                        ${ans.answer_comments ? `<span style="font-size: 0.75rem; color: var(--accent-blue); font-style: italic;">(${renderSafeRichText(ans.answer_comments)})</span>` : ''}
                     </div>
                 `;
             });
@@ -747,7 +747,7 @@ function renderDraftEditor() {
                     <span style="color: var(--text-muted);">${points} ${ptLabel}</span>
                 </div>
             </div>
-            <div class="question-title" id="q-text-${qIndex}">${escapeHtml(htmlToPlainText(q.question_text))}</div>
+            <div class="question-title" id="q-text-${qIndex}">${renderSafeRichText(q.question_text)}</div>
 
             <div class="answers-list" id="q-answers-list-${qIndex}">
                 ${answersHTML}
