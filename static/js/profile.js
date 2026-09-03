@@ -5,7 +5,7 @@
 
 let currentUserProfile = null;
 let currentMemoryScope = 'global'; // 'global' | 'course'
-let currentCourseId = null;
+let profileCourseId = null;
 
 async function initUserProfile() {
     try {
@@ -13,31 +13,12 @@ async function initUserProfile() {
         if (!resp.ok) return;
         const data = await resp.json();
         currentUserProfile = data.profile;
-        currentCourseId = data.current_course_id;
+        profileCourseId = data.current_course_id;
 
-        updateSidebarUserInfo(data);
-        updateGeneratorMemoryBadge(data.active_memories_count, data.profile.memory_enabled);
+        updateGeneratorMemoryBadge(data.active_memories_count, data.profile ? data.profile.memory_enabled : true);
     } catch (err) {
         console.warn('Failed to load user profile & memory:', err);
     }
-}
-
-function updateSidebarUserInfo(data) {
-    const profile = data.profile || {};
-    const name = profile.user_name || 'Instructor';
-    const role = data.user_role || 'Teacher';
-
-    const avatarEl = document.querySelector('.user-profile .avatar');
-    if (avatarEl) {
-        const initials = name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase() || 'IN';
-        avatarEl.textContent = initials;
-    }
-
-    const nameEl = document.querySelector('.user-profile .user-name');
-    if (nameEl) nameEl.textContent = name;
-
-    const roleEl = document.querySelector('.user-profile .user-role');
-    if (roleEl) roleEl.textContent = role;
 }
 
 function updateGeneratorMemoryBadge(activeCount, isEnabled) {
@@ -119,7 +100,7 @@ function renderProfileModalContent() {
 
     const courseLabel = document.getElementById('profile-course-id-label');
     if (courseLabel) {
-        courseLabel.textContent = currentCourseId ? `Course ${currentCourseId}` : 'Current Course';
+        courseLabel.textContent = profileCourseId ? `Course ${profileCourseId}` : 'Current Course';
     }
 
     // Master toggle
@@ -137,7 +118,7 @@ function renderMemoryList() {
 
     let items = [];
     if (currentMemoryScope === 'course') {
-        const cid = String(currentCourseId || '');
+        const cid = String(profileCourseId || '');
         const courseMems = currentUserProfile.course_memories || {};
         items = courseMems[cid] || [];
     } else {
@@ -157,11 +138,14 @@ function renderMemoryList() {
         return;
     }
 
+    // escapeHtml is provided globally by util.js
+    const safeEscape = typeof escapeHtml === 'function' ? escapeHtml : (s => s || '');
+
     container.innerHTML = items.map(m => `
         <div class="memory-item-row ${m.enabled === false ? 'disabled' : ''}" data-memory-id="${m.id}">
             <input type="checkbox" class="memory-item-checkbox" ${m.enabled !== false ? 'checked' : ''} 
                 onchange="onToggleMemoryItem('${m.id}', this.checked)" title="Toggle active/inactive">
-            <span class="memory-item-text">${escapeHtml(m.text)}</span>
+            <span class="memory-item-text">${safeEscape(m.text)}</span>
             <button type="button" class="memory-item-del-btn" onclick="onDeleteMemoryItem('${m.id}')" title="Delete preference">
                 <i class="fa-solid fa-trash-can"></i>
             </button>
@@ -192,7 +176,7 @@ async function submitNewMemory() {
     const text = input.value.trim();
     if (!text) return;
 
-    const courseId = currentMemoryScope === 'course' ? currentCourseId : null;
+    const courseId = currentMemoryScope === 'course' ? profileCourseId : null;
 
     try {
         const resp = await fetch('/api/user/memories', {
@@ -228,7 +212,7 @@ async function submitNewMemory() {
 }
 
 async function onToggleMemoryItem(memoryId, enabled) {
-    const courseId = currentMemoryScope === 'course' ? currentCourseId : null;
+    const courseId = currentMemoryScope === 'course' ? profileCourseId : null;
     try {
         const resp = await fetch(`/api/user/memories/${memoryId}`, {
             method: 'PUT',
@@ -237,7 +221,6 @@ async function onToggleMemoryItem(memoryId, enabled) {
         });
 
         if (resp.ok) {
-            // update in memory
             updateLocalMemoryEnabled(memoryId, enabled, courseId);
             renderMemoryList();
             recalculateActiveBadge();
@@ -249,7 +232,7 @@ async function onToggleMemoryItem(memoryId, enabled) {
 
 async function onDeleteMemoryItem(memoryId) {
     if (!confirm('Are you sure you want to delete this preference?')) return;
-    const courseId = currentMemoryScope === 'course' ? currentCourseId : null;
+    const courseId = currentMemoryScope === 'course' ? profileCourseId : null;
     const url = courseId ? `/api/user/memories/${memoryId}?course_id=${courseId}` : `/api/user/memories/${memoryId}`;
 
     try {
@@ -314,25 +297,14 @@ function recalculateActiveBadge() {
         (currentUserProfile.global_memories || []).forEach(m => {
             if (m.enabled !== false) count++;
         });
-        if (currentCourseId && currentUserProfile.course_memories) {
-            const courseList = currentUserProfile.course_memories[String(currentCourseId)] || [];
+        if (profileCourseId && currentUserProfile.course_memories) {
+            const courseList = currentUserProfile.course_memories[String(profileCourseId)] || [];
             courseList.forEach(m => {
                 if (m.enabled !== false) count++;
             });
         }
     }
     updateGeneratorMemoryBadge(count, currentUserProfile.memory_enabled !== false);
-}
-
-// Ensure escapeHtml helper is available
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
